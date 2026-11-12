@@ -26,8 +26,9 @@ type Database struct {
 
 // Config is the on-disk config file shape.
 type Config struct {
-	Database Database `json:"database"`
-	SkillDir string   `json:"skill_dir"`
+	Database    Database `json:"database"`
+	SkillDir    string   `json:"skill_dir"`
+	NucleiDir   string   `json:"nuclei_templates_dir"`
 }
 
 // BaseDir is the directory that anchors all runtime artifacts (config.json and
@@ -113,6 +114,18 @@ func Load() Config {
 //	env ARTEX_SKILL_DIR  >  config file (skill_dir)  >  BaseDir()/skills
 //
 // The directory is created if it does not exist.
+// NucleiTemplatesDir returns the nuclei-templates root directory with precedence:
+// env ARTEX_NUCLEI_TEMPLATES_DIR > config file field > default /opt/nuclei-templates.
+func NucleiTemplatesDir() string {
+	if v := os.Getenv("ARTEX_NUCLEI_TEMPLATES_DIR"); strings.TrimSpace(v) != "" {
+		return v
+	}
+	if v := strings.TrimSpace(Load().NucleiDir); v != "" {
+		return v
+	}
+	return "/opt/nuclei-templates"
+}
+
 func SkillDir() string {
 	var d string
 	if v := strings.TrimSpace(os.Getenv("ARTEX_SKILL_DIR")); v != "" {

@@ -36,7 +36,7 @@ func builtinToolsByAgent() map[string][]actool.CoreTool {
 	return map[string][]actool.CoreTool{
 		"mainagent": ts.MainAgentTools(),
 		"planner":   ts.PlannerTools(),
-		"worker":    ts.WorkerTools(),
+		"worker":    ts.WorkerTools(), // includes matchNucleiTemplates + runNuclei
 		// goals（目标拆解器）默认绑 set_goals + set_constraints：靠它们把拆出的目标、
 		// 抽出的操作约束写进库。与 mainagent 共用同一受管工具，web 端可改描述/schema、按 agent 勾选。
 		"goals": {ts.setGoals(), ts.setConstraints()},

@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"github.com/Autumn-27/artex/agent"
+	"github.com/Autumn-27/artex/config"
 	pgdb "github.com/Autumn-27/artex/db"
+	"github.com/Autumn-27/artex/nuclei"
 	"github.com/Autumn-27/artex/enrich"
 	"github.com/Autumn-27/artex/guard"
 	"github.com/Autumn-27/artex/intercept"
@@ -304,6 +306,8 @@ type Manager struct {
 	proxyPool           *proxyPoolState
 	forwardProxy        *dynamicForwardProxy
 	proxyPoolConfigured atomic.Bool
+	nucleiIdx           *nuclei.Index
+	nucleiSyncer        *nuclei.Syncer
 }
 
 // SetTaskControlMutex lets lifecycle operations that originate in Manager
@@ -681,6 +685,13 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 		}
 	}
 	m.enrich = enrich.New(m.assets, m.ProxyAddr, 4)
+	// Nuclei template tag index — built in background so startup is not blocked.
+	// Index is empty (not nil) when the templates dir is absent; workers get a
+	// graceful "not available" response instead of a nil panic.
+	nucleiDir := config.NucleiTemplatesDir()
+	log.Printf("[config] nuclei-templates 目录: %s", nucleiDir)
+	m.nucleiIdx = nuclei.NewIndex(nucleiDir)
+	m.nucleiSyncer = nuclei.NewSyncer(m.nucleiIdx)
 	// Reconcile the seeded browser MCP with the persisted capture state, so a
 	// restart with capture already on keeps Playwright routed through the proxy.
 	m.syncBrowserMCPProxy()
@@ -1017,6 +1028,9 @@ func encodeJSON(v any) json.RawMessage {
 	}
 	return b
 }
+
+// NucleiIndex returns the nuclei template index (may be nil if templates dir absent).
+func (m *Manager) NucleiIndex() *nuclei.Index { return m.nucleiIdx }
 
 // HostTools are runtime host-provided tools added to EVERY agent's base list (via
 // ToolAugment); the tools table then filters them per-agent binding. Currently the

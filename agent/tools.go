@@ -9,6 +9,7 @@ import (
 
 	"github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/knowledge"
+	"github.com/Autumn-27/artex/nuclei"
 	acperm "github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -110,7 +111,8 @@ type ToolSet struct {
 	notifyHint func(texts []string)
 	// kb is the two-layer RAG knowledge base (global + per-task). Auto-wired in
 	// NewToolSet when an ExplorationStore is available; nil = tools report disabled.
-	kb *knowledge.Service
+	kb        *knowledge.Service
+	nucleiIdx *nuclei.Index
 }
 
 // SetNotifyGoal wires the goal-add trigger callback (see ToolSet.notifyGoal). Set only
