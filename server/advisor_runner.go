@@ -11,7 +11,7 @@ import (
 	"strconv"
 
 	"github.com/Autumn-27/artex/advisor"
-	"github.com/Autumn-27/artex/db"
+	dbpkg "github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/knowledge"
 	"github.com/Autumn-27/norma/llm"
 )
@@ -260,7 +260,7 @@ func (s *Server) runOptimize(ctx context.Context, newTags []string) {
 			}
 			// finding names
 			taskIDStr := strconv.FormatInt(pt.ID, 10)
-			ff, _, err := s.m.pg.ListFindingsPage(db.FindingFilter{TaskID: taskIDStr}, 1, 50)
+			ff, _, err := s.m.pg.ListFindingsPage(dbpkg.FindingFilter{TaskID: taskIDStr}, 1, 50)
 			if err == nil {
 				for _, f := range ff {
 					ot.Findings = append(ot.Findings, f.Name)
@@ -279,9 +279,43 @@ func (s *Server) runOptimize(ctx context.Context, newTags []string) {
 	if res == nil || len(res.Items) == 0 {
 		return
 	}
+	// Write Optimize suggestions into the weapon library as unverified entries.
+	// They surface to the planner on the next matching task; a human or the
+	// advisor's Review pass can promote them to verified later.
 	for _, item := range res.Items {
 		log.Printf("[advisor/optimize] [%s] %s — %s", item.Severity, item.Finding, item.Suggestion)
+		if s.m.pg == nil {
+			continue
+		}
+		content := fmt.Sprintf("建议[%s]：%s
+
+模板触发标签：%s", item.Severity, item.Suggestion, joinTags(newTags, 10))
+		if _, err := s.m.pg.AddKnowledgeDoc(&dbpkg.KnowledgeDoc{
+			Scope:    "global",
+			Category: "nuclei-optimize",
+			Title:    fmt.Sprintf("🔄 nuclei更新建议: %s", item.Finding),
+			Content:  content,
+			Source:   "advisor",
+			Status:   dbpkg.KBStatusUnverified,
+		}); err != nil {
+			log.Printf("[advisor/optimize] write doc: %v", err)
+		}
 	}
+}
+
+// joinTags returns up to max tags joined by ", ".
+func joinTags(tags []string, max int) string {
+	if len(tags) > max {
+		tags = tags[:max]
+	}
+	out := ""
+	for i, tt := range tags {
+		if i > 0 {
+			out += ", "
+		}
+		out += tt
+	}
+	return out
 }
 
 // ── routing ───────────────────────────────────────────────────────────────────
@@ -300,7 +334,7 @@ func (s *Server) routeAdvisory(ctx context.Context, t *Task, items []advisor.Ite
 			_ = t.Store.AddHint(msg)
 			t.Notify()
 		case advisor.Blocker:
-			s.engine.emitActivity(t, db.Activity{
+			s.engine.emitActivity(t, dbpkg.Activity{
 				Worker:  "advisor",
 				Kind:    "text",
 				Summary: msg,
