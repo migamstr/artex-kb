@@ -109,13 +109,8 @@ func Load() Config {
 	return c
 }
 
-// SkillDir returns the skill root directory with precedence:
-//
-//	env ARTEX_SKILL_DIR  >  config file (skill_dir)  >  BaseDir()/skills
-//
-// The directory is created if it does not exist.
-// NucleiTemplatesDir returns the nuclei-templates root directory with precedence:
-// env ARTEX_NUCLEI_TEMPLATES_DIR > config file field > default /opt/nuclei-templates.
+// NucleiTemplatesDir returns the nuclei-templates root directory.
+// Priority: env ARTEX_NUCLEI_TEMPLATES_DIR > config file (nuclei_templates_dir) > /opt/nuclei-templates.
 func NucleiTemplatesDir() string {
 	if v := os.Getenv("ARTEX_NUCLEI_TEMPLATES_DIR"); strings.TrimSpace(v) != "" {
 		return v
@@ -126,6 +121,11 @@ func NucleiTemplatesDir() string {
 	return "/opt/nuclei-templates"
 }
 
+// SkillDir returns the skill root directory with precedence:
+//
+//	env ARTEX_SKILL_DIR  >  config file (skill_dir)  >  BaseDir()/skills
+//
+// The directory is created if it does not exist.
 func SkillDir() string {
 	var d string
 	if v := strings.TrimSpace(os.Getenv("ARTEX_SKILL_DIR")); v != "" {

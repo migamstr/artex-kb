@@ -35,14 +35,14 @@ usage() {
   ./build.sh --release               编译并打包全部 Linux 目标（amd64/arm64）
 
 选项：
-  --release              构建 Linux、macOS、Windows 的 amd64/arm64 目标并生成 zip
-  --target OS/ARCH       设置单个目标，例如 windows/amd64
+  --release              构建全部 Linux 目标（amd64/arm64）并生成 zip
+  --target OS/ARCH       设置单个目标，例如 linux/amd64
   --upx                  强制使用 UPX 压缩二进制（可能影响部分 Linux 环境兼容性）
   --no-compress          不使用 UPX，仅使用 Go linker 裁剪并压缩 zip
   --help                 显示帮助
 
 多目标列表可通过 ARTEX_TARGETS 覆盖，例如：
-  ARTEX_TARGETS=linux/amd64,windows/amd64 ./build.sh --release
+  ARTEX_TARGETS=linux/amd64,linux/arm64 ./build.sh --release
 EOF
 }
 

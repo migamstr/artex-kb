@@ -999,16 +999,13 @@ func (s *ExplorationStore) Edges(limit int) ([]Edge, error) {
 	return out, rows.Err()
 }
 
-// FactsYielded returns the ids of fact nodes an intent produced (intent --yields-->
-// fact), oldest first. Used to spell out the round's incremental facts to the planner
-// alongside the finished worker's output. Best-effort: returns nil for an intent with
-// no facts (or a missing one).
-// FindingsYieldedByIntent returns finding node IDs yielded by the given intent.
+// FindingsYieldedByIntent returns finding node IDs yielded by the given intent,
+// mirroring the FactsYielded pattern but filtering for kind=finding.
 func (s *ExplorationStore) FindingsYieldedByIntent(intentID int64) ([]int64, error) {
 	rows, err := s.db.Query(
 		`SELECT n.id FROM exploration_nodes n
-		 JOIN exploration_edges e ON e.to_id=n.id
-		 WHERE e.exploration_id=$1 AND e.from_id=$2 AND e.rel=$3 AND n.kind='finding'
+		 JOIN exploration_edges e ON e.dst_id=n.id
+		 WHERE e.exploration_id=$1 AND e.src_id=$2 AND e.rel=$3 AND n.kind='finding'
 		 ORDER BY n.id`,
 		s.expID, intentID, RelYields)
 	if err != nil {
@@ -1046,15 +1043,18 @@ func (s *ExplorationStore) AllConfirmedFindings() ([]*Node, error) {
 	return out, rows.Err()
 }
 
-// AddHint adds a strategic hint to the exploration graph (Advisor use).
+// AddHint adds a strategic hint to the exploration graph from the Advisor.
+// Uses the same state/priority as human hints (addOneHint): state="active", priority=0.
 func (s *ExplorationStore) AddHint(text string) error {
 	if text == "" {
 		return nil
 	}
-	_, err := s.AddNode("hint", map[string]any{"text": text, "source": "advisor"}, 7, "open", "advisor", nil)
+	_, err := s.AddNode(KindHint, map[string]any{"text": text, "source": "advisor"}, 0, "active", "advisor", nil)
 	return err
 }
 
+// FactsYielded returns the ids of fact nodes an intent produced (intent --yields-->
+// fact), oldest first. Best-effort: returns nil for an intent with no facts.
 func (s *ExplorationStore) FactsYielded(intentID int64) ([]int64, error) {
 	rows, err := s.db.Query(`SELECT n.id
 		FROM exploration_edges e

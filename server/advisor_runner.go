@@ -100,7 +100,14 @@ func (s *Server) buildReviewInput(t *Task, intentID int64) (advisor.ReviewInput,
 		if id, err := strconv.ParseInt(t.ID, 10, 64); err == nil {
 			if scopes, err := s.m.assets.ListTaskScope(id); err == nil {
 				for _, sc := range scopes {
-					in.Scope = append(in.Scope, sc.Value)
+					switch {
+					case sc.Domain != "":
+						in.Scope = append(in.Scope, sc.Domain)
+					case sc.Net != "":
+						in.Scope = append(in.Scope, sc.Net)
+					case sc.Value != "":
+						in.Scope = append(in.Scope, sc.Value)
+					}
 				}
 			}
 		}

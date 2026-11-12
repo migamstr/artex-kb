@@ -7,7 +7,6 @@ package db
 
 import (
 	"database/sql"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -436,4 +435,3 @@ func vecLiteral(v []float32) string {
 	return b.String()
 }
 
-var _ = fmt.Sprintf

@@ -19,6 +19,6 @@ const findingTrafficGuidance = "\n\n**漏洞流量证据（可选）**：调用 
 
 func (t *ToolSet) SetFindingRecorder(r FindingRecorder)   { t.findingRecorder = r }
 func (w *Worker) SetFindingRecorder(r FindingRecorder)    { w.findingRecorder = r }
-func (w *Worker) SetNucleiIndex(idx *nuclei.Index)           { w.nucleiIdx = idx }
+func (w *Worker) SetNucleiIndex(idx *nuclei.Index) { w.nucleiIdx = idx }
 func (p *Planner) SetFindingRecorder(r FindingRecorder)   { p.findingRecorder = r }
 func (m *MainAgent) SetFindingRecorder(r FindingRecorder) { m.findingRecorder = r }

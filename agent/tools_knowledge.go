@@ -19,7 +19,7 @@ func (t *ToolSet) SetKnowledgeStore(kb *knowledge.Service) { t.kb = kb }
 // knowledge base: global common knowledge + this task's uploaded background.
 func (t *ToolSet) searchKnowledge() actool.CoreTool {
 	return readTool("search_knowledge",
-		"检索知识库：全局通用知识(漏洞库/0day/技巧/方法论) + 当前任务专属资料(评分规则/授权范围/目标/检查项)。用自然语言描述你要找什么，返回最相关的知识片段。执行任务时应主动检索相关知识来指导方法选择与判定标准。仅在首次规划某类目标、或意图方向不确定时调用；已有充足意图时跳过。",
+		"检索知识库：全局通用知识(漏洞库/0day/技巧/方法论) + 当前任务专属资料(评分规则/授权范围/目标/检查项)。用自然语言描述你要找什么，返回最相关的知识片段。由 planner 在规划阶段调用（不在 worker 工具集中）。仅在首次规划某类目标、或意图方向不确定时检索；已有充足意图时跳过。",
 		obj(map[string]any{
 			"query": str("要检索的问题或主题，自然语言描述"),
 			"top_k": intp("返回条数，默认 5"),
