@@ -35,6 +35,21 @@ type Result struct {
 	Items []Item `json:"items"`
 }
 
+// ArmorEntry is one knowledge base entry produced by the Advisor after reviewing
+// a worker run. It will be written to knowledge_docs by the caller.
+type ArmorEntry struct {
+	Status   string // db.KBStatusVerified or db.KBStatusNegative
+	Category string
+	Title    string
+	Content  string
+}
+
+// ReviewOutput extends Result with weapon-library entries derived from this run.
+type ReviewOutput struct {
+	Result
+	Armor []ArmorEntry // entries to write to knowledge_docs (may be empty)
+}
+
 // Advisor holds shared resources for all three modes.
 type Advisor struct {
 	prov      llm.Provider
@@ -63,7 +78,7 @@ type ReviewInput struct {
 }
 
 // Review runs a single LLM completion to advise on a just-finished worker run.
-func (a *Advisor) Review(ctx context.Context, in ReviewInput) (*Result, error) {
+func (a *Advisor) Review(ctx context.Context, in ReviewInput) (*ReviewOutput, error) {
 	if a.prov == nil {
 		return nil, nil
 	}
@@ -84,7 +99,11 @@ func (a *Advisor) Review(ctx context.Context, in ReviewInput) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("advisor review: %w", err)
 	}
-	return parseResult(msg.Text()), nil
+	res := parseResult(msg.Text())
+	if res == nil {
+		res = &Result{}
+	}
+	return &ReviewOutput{Result: *res, Armor: extractArmor(in, msg.Text())}, nil
 }
 
 // SummarizeInput is the task context for Summarize mode (总结经验).
@@ -253,4 +272,50 @@ func parseResult(text string) *Result {
 		return &Result{}
 	}
 	return &r
+}
+
+// extractArmor derives weapon-library entries from a worker run and the advisor's
+// response. It produces at most one verified + one negative entry per run to
+// avoid flooding the knowledge base.
+func extractArmor(in ReviewInput, advisorText string) []ArmorEntry {
+	var out []ArmorEntry
+	lower := strings.ToLower(advisorText)
+
+	// Positive: worker found something — promote to verified entry
+	if len(in.Findings) > 0 {
+		var details []string
+		for _, f := range in.Findings {
+			details = append(details, f)
+		}
+		for _, f := range in.NewFacts {
+			details = append(details, f)
+		}
+		out = append(out, ArmorEntry{
+			Status:   "verified",
+			Category: "auto-finding",
+			Title:    fmt.Sprintf("intent #%d: %s", in.IntentID, truncateStr(in.Intent, 60)),
+			Content:  strings.Join(details, "\n"),
+		})
+	}
+
+	// Negative: advisor text mentions dead-end, failed, blocked, 无效, 失败
+	negKeywords := []string{"dead", "failed", "blocked", "ineffective", "无效", "失败", "无回显", "被过滤", "not vulnerable"}
+	for _, kw := range negKeywords {
+		if strings.Contains(lower, kw) && len(in.NewFacts) > 0 {
+			out = append(out, ArmorEntry{
+				Status:   "negative",
+				Category: "auto-negative",
+				Title:    fmt.Sprintf("❌ intent #%d 无效路径: %s", in.IntentID, truncateStr(in.Intent, 60)),
+				Content:  strings.Join(in.NewFacts, "\n"),
+			})
+			break
+		}
+	}
+	return out
+}
+
+func truncateStr(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max { return s }
+	return string(r[:max]) + "..."
 }

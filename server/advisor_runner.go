@@ -45,10 +45,27 @@ func (s *Server) runReview(ctx context.Context, t *Task, intentID int64) {
 		log.Printf("[advisor/review] task %s intent #%d: %v", t.ID, intentID, err)
 		return
 	}
-	if res == nil || len(res.Items) == 0 {
+	if res == nil {
 		return
 	}
-	s.routeAdvisory(ctx, t, res.Items)
+	if len(res.Items) > 0 {
+		s.routeAdvisory(ctx, t, res.Items)
+	}
+	// Write armor entries (verified/negative) to the knowledge base.
+	if len(res.Armor) > 0 && s.m.pg != nil {
+		taskIDInt, _ := strconv.ParseInt(t.ID, 10, 64)
+		for _, entry := range res.Armor {
+			var writeErr error
+			if entry.Status == "verified" {
+				_, writeErr = s.m.pg.AddVerifiedDoc(taskIDInt, entry.Category, entry.Title, entry.Content)
+			} else {
+				_, writeErr = s.m.pg.AddNegativeDoc(taskIDInt, entry.Category, entry.Title, entry.Content)
+			}
+			if writeErr != nil {
+				log.Printf("[advisor/review] write armor entry: %v", writeErr)
+			}
+		}
+	}
 }
 
 func (s *Server) buildReviewInput(t *Task, intentID int64) (advisor.ReviewInput, error) {

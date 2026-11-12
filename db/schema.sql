@@ -1703,3 +1703,14 @@ CREATE TABLE IF NOT EXISTS knowledge_config (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 INSERT INTO knowledge_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- ── R2. 武器库状态字段（ALTER — 幂等）─────────────────────────────────────────
+-- status: unverified(默认) | verified(已验证可用) | negative(已验证无效)
+-- hit_count: 被注入 planner/worker prompt 的累计次数
+-- source_task_id: 由哪个任务的 Advisor 自动写入（人工条目为 NULL）
+ALTER TABLE knowledge_docs ADD COLUMN IF NOT EXISTS status       TEXT    NOT NULL DEFAULT 'unverified'
+    CHECK (status IN ('unverified','verified','negative'));
+ALTER TABLE knowledge_docs ADD COLUMN IF NOT EXISTS hit_count    INT     NOT NULL DEFAULT 0;
+ALTER TABLE knowledge_docs ADD COLUMN IF NOT EXISTS source_task_id BIGINT REFERENCES tasks(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_knowledge_docs_status ON knowledge_docs(status);
+CREATE INDEX IF NOT EXISTS idx_knowledge_docs_hit    ON knowledge_docs(hit_count DESC);

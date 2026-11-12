@@ -13,20 +13,30 @@ import (
 )
 
 type KnowledgeDoc struct {
-	ID        int64     `json:"id"`
-	Scope     string    `json:"scope"` // global | task
-	TaskID    *int64    `json:"task_id,omitempty"`
-	Category  string    `json:"category"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content,omitempty"` // omitted in list views
-	Source    string    `json:"source"`            // manual | upload | migrated
-	FileName  string    `json:"file_name,omitempty"`
-	Bytes     int64     `json:"bytes"`
-	Indexed   bool      `json:"indexed"`
-	Chunks    int       `json:"chunks"` // vector chunk count (computed, 0 if keyword-only)
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           int64     `json:"id"`
+	Scope        string    `json:"scope"` // global | task
+	TaskID       *int64    `json:"task_id,omitempty"`
+	Category     string    `json:"category"`
+	Title        string    `json:"title"`
+	Content      string    `json:"content,omitempty"` // omitted in list views
+	Source       string    `json:"source"`            // manual | upload | migrated | advisor
+	FileName     string    `json:"file_name,omitempty"`
+	Bytes        int64     `json:"bytes"`
+	Indexed      bool      `json:"indexed"`
+	Chunks       int       `json:"chunks"`  // vector chunk count (computed)
+	Status       string    `json:"status"`  // unverified | verified | negative
+	HitCount     int       `json:"hit_count"`
+	SourceTaskID *int64    `json:"source_task_id,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
+
+// KnowledgeDocStatus values.
+const (
+	KBStatusUnverified = "unverified"
+	KBStatusVerified   = "verified"
+	KBStatusNegative   = "negative"
+)
 
 // KnowledgeConfig is the singleton OpenAI-compatible embedder config.
 type KnowledgeConfig struct {
@@ -107,6 +117,100 @@ func (d *DB) EnsureKnowledgeVectorSchema() {
 
 // ---------- embedder config ----------
 
+
+// SetKnowledgeDocStatus updates the verification status of a knowledge doc.
+func (d *DB) SetKnowledgeDocStatus(id int64, status string) error {
+	_, err := d.Exec(`UPDATE knowledge_docs SET status=$2, updated_at=now() WHERE id=$1`, id, status)
+	return err
+}
+
+// IncrKnowledgeHitCount increments the hit counter when a doc is injected into a prompt.
+func (d *DB) IncrKnowledgeHitCount(ids []int64) {
+	if len(ids) == 0 {
+		return
+	}
+	for _, id := range ids {
+		_, _ = d.Exec(`UPDATE knowledge_docs SET hit_count=hit_count+1 WHERE id=$1`, id)
+	}
+}
+
+// SearchArmorDocs returns verified knowledge docs matching the given tags/keywords,
+// ordered by hit_count desc. Used for planner/worker armor injection.
+// Negative docs are excluded; unverified are included with lower weight.
+func (d *DB) SearchArmorDocs(query string, taskID int64, limit int) ([]KnowledgeDoc, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	like := "%" + strings.TrimSpace(query) + "%"
+	scopeClause := "(scope='global'"
+	args := []any{like}
+	if taskID > 0 {
+		scopeClause += " OR (scope='task' AND task_id=$2)"
+		args = append(args, taskID)
+	}
+	scopeClause += ")"
+	q := `SELECT id, scope, task_id, category, title, LEFT(content,800) AS content,
+		source, status, hit_count, source_task_id, created_at, updated_at
+		FROM knowledge_docs
+		WHERE status <> 'negative'
+		AND (title ILIKE $1 OR content ILIKE $1 OR category ILIKE $1)
+		AND ` + scopeClause + `
+		ORDER BY
+			CASE status WHEN 'verified' THEN 0 ELSE 1 END,
+			hit_count DESC,
+			updated_at DESC
+		LIMIT ` + strconv.Itoa(limit)
+	rows, err := d.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []KnowledgeDoc
+	for rows.Next() {
+		var doc KnowledgeDoc
+		var tid, stid sql.NullInt64
+		if err := rows.Scan(
+			&doc.ID, &doc.Scope, &tid, &doc.Category, &doc.Title, &doc.Content,
+			&doc.Source, &doc.Status, &doc.HitCount, &stid,
+			&doc.CreatedAt, &doc.UpdatedAt,
+		); err != nil {
+			continue
+		}
+		if tid.Valid { v := tid.Int64; doc.TaskID = &v }
+		if stid.Valid { v := stid.Int64; doc.SourceTaskID = &v }
+		out = append(out, doc)
+	}
+	return out, rows.Err()
+}
+
+// AddNegativeDoc writes a negative knowledge entry (tried and failed).
+func (d *DB) AddNegativeDoc(taskID int64, category, title, content string) (int64, error) {
+	return d.AddKnowledgeDoc(&KnowledgeDoc{
+		Scope:        "global",
+		TaskID:       &taskID,
+		Category:     category,
+		Title:        title,
+		Content:      content,
+		Source:       "advisor",
+		Status:       KBStatusNegative,
+		SourceTaskID: &taskID,
+	})
+}
+
+// AddVerifiedDoc writes a verified technique/finding to the knowledge base.
+func (d *DB) AddVerifiedDoc(taskID int64, category, title, content string) (int64, error) {
+	return d.AddKnowledgeDoc(&KnowledgeDoc{
+		Scope:        "global",
+		TaskID:       &taskID,
+		Category:     category,
+		Title:        title,
+		Content:      content,
+		Source:       "advisor",
+		Status:       KBStatusVerified,
+		SourceTaskID: &taskID,
+	})
+}
+
 func (d *DB) GetKnowledgeConfig() (*KnowledgeConfig, error) {
 	var c KnowledgeConfig
 	err := d.QueryRow(`SELECT enabled, base_url, model, COALESCE(api_key,''), dim FROM knowledge_config WHERE id=1`).
@@ -172,9 +276,17 @@ func (d *DB) AddKnowledgeDoc(doc *KnowledgeDoc) (int64, error) {
 		bytes = int64(len(doc.Content))
 	}
 	var id int64
-	err := d.QueryRow(`INSERT INTO knowledge_docs (scope, task_id, category, title, content, source, file_name, bytes)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-		scope, tid, strings.TrimSpace(doc.Category), strings.TrimSpace(doc.Title), doc.Content, source, doc.FileName, bytes).Scan(&id)
+	status := doc.Status
+	if status == "" {
+		status = KBStatusUnverified
+	}
+	var stid interface{} = nil
+	if doc.SourceTaskID != nil {
+		stid = *doc.SourceTaskID
+	}
+	err := d.QueryRow(`INSERT INTO knowledge_docs (scope, task_id, category, title, content, source, file_name, bytes, status, source_task_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+		scope, tid, strings.TrimSpace(doc.Category), strings.TrimSpace(doc.Title), doc.Content, source, doc.FileName, bytes, status, stid).Scan(&id)
 	return id, err
 }
 

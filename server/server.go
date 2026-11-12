@@ -824,6 +824,13 @@ func (s *Server) Handler() http.Handler {
 	// /api/health），所以这几个改动程序自身的接口天然需要登录。
 	mux.HandleFunc("GET /api/nuclei/status", s.requireAuth(s.handleNucleiStatus))
 	mux.HandleFunc("POST /api/nuclei/sync", s.requireAuth(s.handleNucleiSync))
+	// Knowledge / weapon-library API
+	mux.HandleFunc("GET /api/knowledge/stats", s.requireAuth(s.handleKnowledgeStats))
+	mux.HandleFunc("GET /api/knowledge/docs", s.requireAuth(s.handleListKnowledgeDocs))
+	mux.HandleFunc("POST /api/knowledge/docs", s.requireAuth(s.handleCreateKnowledgeDoc))
+	mux.HandleFunc("GET /api/knowledge/docs/search", s.requireAuth(s.handleSearchKnowledgeDocs))
+	mux.HandleFunc("PATCH /api/knowledge/docs/{id}/status", s.requireAuth(s.handleUpdateKnowledgeDocStatus))
+	mux.HandleFunc("POST /api/knowledge/import-task/{task_id}", s.requireAuth(s.handleImportFromTask))
 	mux.HandleFunc("GET /api/update/settings", s.getUpdateSettings)
 	mux.HandleFunc("PUT /api/update/settings", s.putUpdateSettings)
 	mux.HandleFunc("GET /api/update/check", s.updateCheck)

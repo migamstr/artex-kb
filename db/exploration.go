@@ -184,7 +184,8 @@ func (d *DB) CreateExploration(description, goal string) (int64, error) {
 // Exploration returns a handle bound to an exploration id.
 func (d *DB) Exploration(id int64) *ExplorationStore { return &ExplorationStore{db: d, expID: id} }
 
-func (s *ExplorationStore) ID() int64 { return s.expID }
+func (s *ExplorationStore) ID() int64  { return s.expID }
+func (s *ExplorationStore) DB() *DB    { return s.db }
 
 // Root returns the exploration's description and goal.
 func (s *ExplorationStore) Root() (description, goal string, err error) {

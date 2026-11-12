@@ -47,10 +47,14 @@ type Planner struct {
 	// dispatch it step-by-step over rounds instead of front-loading it in parallel.
 	todoMu sync.Mutex
 	todos  map[int64]*actool.TodoStore
+	// armorCache holds the per-task weapon-library block injected on the first
+	// planner round. Computed once per task run, never re-queried.
+	armorMu    sync.Mutex
+	armorCache map[int64]string // explorationID → injected block (empty = no hits)
 }
 
 func NewPlanner(prov llm.Provider, model, workDir string, tx *transcript.Store, window, maxTurns int) *Planner {
-	return &Planner{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns, todos: map[int64]*actool.TodoStore{}}
+	return &Planner{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns, todos: map[int64]*actool.TodoStore{}, armorCache: map[int64]string{}}
 }
 
 func (p *Planner) SetCompactionWindowResolver(fn func() int) { p.windowFn = fn }
@@ -399,6 +403,12 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	sysBody := plannerSystem(goal, p.workDir, taskDir)
 	if p.wantConstraints() {
 		sysBody += constraintBlock(ts) // 操作约束(若有)注入系统提示,框定探索边界
+	}
+	// Armor injection: on first round for this task, query the weapon library
+	// and prepend matching verified/unverified entries to the system prompt.
+	// Negative entries are excluded by the query. Cached after first query.
+	if block := p.armorBlock(ctx, taskID, ts, goal); block != "" {
+		sysBody += block
 	}
 	system, boundary := deferredSystem(sysBody, def)
 	// planner 无自身墙钟预算;有 deadline 时把 MaxDuration 夹逼到剩余,让在跑的规划轮在
