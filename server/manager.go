@@ -700,6 +700,9 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	log.Printf("[config] nuclei-templates 目录: %s", nucleiDir)
 	m.nucleiIdx = nuclei.NewIndex(nucleiDir)
 	m.nucleiSyncer = nuclei.NewSyncer(m.nucleiIdx)
+	if m.pg != nil {
+		m.nucleiSyncer.SetDB(m.pg)
+	}
 	// Reconcile the seeded browser MCP with the persisted capture state, so a
 	// restart with capture already on keeps Playwright routed through the proxy.
 	m.syncBrowserMCPProxy()

@@ -17,18 +17,21 @@ const DefaultTemplatesDir = "/opt/nuclei-templates"
 type templateInfo struct {
 	ID   string `yaml:"id"`
 	Info struct {
-		Name     string      `yaml:"name"`
-		Severity string      `yaml:"severity"`
-		Tags     interface{} `yaml:"tags"`
+		Name        string      `yaml:"name"`
+		Severity    string      `yaml:"severity"`
+		Description string      `yaml:"description"`
+		Tags        interface{} `yaml:"tags"`
 	} `yaml:"info"`
 }
 
 // Entry is one indexed template.
 type Entry struct {
-	ID       string
-	Path     string
-	Severity string
-	Tags     []string
+	ID          string
+	Path        string
+	Severity    string
+	Name        string
+	Description string
+	Tags        []string
 }
 
 // Index is a thread-safe in-memory tag index.
@@ -123,6 +126,15 @@ func (idx *Index) Search(tags []string, severities []string) []Entry {
 	return out
 }
 
+// AllEntries returns a snapshot of all indexed templates.
+func (idx *Index) AllEntries() []Entry {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	out := make([]Entry, len(idx.all))
+	copy(out, idx.all)
+	return out
+}
+
 // Tags returns all known tag names (snapshot copy, safe to hold after Rebuild).
 func (idx *Index) Tags() []string {
 	idx.mu.RLock()
@@ -181,9 +193,11 @@ func parseTemplate(path, rootDir string) (Entry, bool) {
 	rel, _ := filepath.Rel(rootDir, path)
 	rel = filepath.ToSlash(rel)
 	return Entry{
-		ID:       m.ID,
-		Path:     rel,
-		Severity: strings.ToLower(m.Info.Severity),
-		Tags:     tags,
+		ID:          m.ID,
+		Path:        rel,
+		Severity:    strings.ToLower(m.Info.Severity),
+		Name:        m.Info.Name,
+		Description: m.Info.Description,
+		Tags:        tags,
 	}, true
 }

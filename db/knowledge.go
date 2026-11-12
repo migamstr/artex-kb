@@ -582,3 +582,26 @@ func vecLiteral(v []float32) string {
 	return b.String()
 }
 
+
+// UpsertCVEDoc inserts a CVE knowledge entry if one with the same title does not
+// already exist (category=cve-nuclei). Returns (id, inserted, error).
+func (d *DB) UpsertCVEDoc(title, content string) (int64, bool, error) {
+	// Check for existing entry by title + category to avoid duplicates on re-pull.
+	var existing int64
+	err := d.QueryRow(`SELECT id FROM knowledge_docs WHERE category='cve-nuclei' AND title=$1 LIMIT 1`, title).Scan(&existing)
+	if err == nil {
+		return existing, false, nil // already exists
+	}
+	id, err := d.AddKnowledgeDoc(&KnowledgeDoc{
+		Scope:    "global",
+		Category: "cve-nuclei",
+		Title:    title,
+		Content:  content,
+		Source:   "nuclei-sync",
+		Status:   KBStatusUnverified,
+	})
+	if err != nil {
+		return 0, false, err
+	}
+	return id, true, nil
+}
