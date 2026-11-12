@@ -123,6 +123,17 @@ func (idx *Index) Search(tags []string, severities []string) []Entry {
 	return out
 }
 
+// Tags returns all known tag names (snapshot copy, safe to hold after Rebuild).
+func (idx *Index) Tags() []string {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	out := make([]string, 0, len(idx.byTag))
+	for t := range idx.byTag {
+		out = append(out, t)
+	}
+	return out
+}
+
 func (idx *Index) AbsPath(rel string) string {
 	return filepath.Join(idx.dir, rel)
 }

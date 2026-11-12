@@ -609,6 +609,14 @@ func NewManager(dir, proxyAddr string) (*Manager, error) {
 	if err := pg.EnsureLLMUsageTable(); err != nil {
 		log.Printf("[llmusage] create table: %v", err)
 	}
+	// Best-effort pgvector setup: if the extension exists, enable semantic
+	// search over knowledge_chunks; failure degrades to keyword-only silently.
+	pg.EnsureKnowledgeVectorSchema()
+	if pg.KnowledgeVectorAvailable() {
+		log.Printf("[knowledge] pgvector available, semantic search enabled")
+	} else {
+		log.Printf("[knowledge] pgvector not available, keyword-only search")
+	}
 	m := &Manager{dir: dir, pg: pg, assets: pg.Assets(), tasks: map[string]*Task{}, interceptor: intercept.New(pg)}
 	if fp, ferr := newDynamicForwardProxy(func() string { return m.GlobalProxy() }); ferr == nil {
 		m.forwardProxy = fp

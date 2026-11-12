@@ -999,6 +999,25 @@ func (s *ExplorationStore) Edges(limit int) ([]Edge, error) {
 	return out, rows.Err()
 }
 
+// AnchoredAssetIDs returns the asset IDs anchored to a given node (e.g. intent).
+// Used by the Advisor to fetch which assets a worker intent touched.
+func (s *ExplorationStore) AnchoredAssetIDs(nodeID int64) ([]int64, error) {
+	rows, err := s.db.Query(
+		`SELECT asset_id FROM exploration_anchors WHERE node_id=$1`, nodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
+}
+
 // FindingsYieldedByIntent returns finding node IDs yielded by the given intent,
 // mirroring the FactsYielded pattern but filtering for kind=finding.
 func (s *ExplorationStore) FindingsYieldedByIntent(intentID int64) ([]int64, error) {

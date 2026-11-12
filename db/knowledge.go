@@ -70,6 +70,41 @@ type KnowledgeRetrievalLog struct {
 // KnowledgeVectorAvailable reports whether the pgvector semantic layer exists.
 func (d *DB) KnowledgeVectorAvailable() bool { return d.GetBool("knowledge.vector_available", false) }
 
+// EnsureKnowledgeVectorSchema tries to enable pgvector and create the
+// knowledge_chunks table. It is called once at startup; failures degrade
+// gracefully to keyword-only search without blocking the server.
+//
+//   - CREATE EXTENSION IF NOT EXISTS vector — requires superuser; fails silently
+//     when unavailable (hosted PG without pgvector, or insufficient privileges).
+//   - CREATE TABLE knowledge_chunks — only attempted when the extension succeeded.
+//   - Sets setting knowledge.vector_available=true on full success.
+func (d *DB) EnsureKnowledgeVectorSchema() {
+	// Try to create the extension. Failure is expected (and fine) on most
+	// managed PostgreSQL instances — degrade to keyword search silently.
+	_, extErr := d.Exec(`CREATE EXTENSION IF NOT EXISTS vector`)
+	if extErr != nil {
+		_ = d.SetBool("knowledge.vector_available", false)
+		return
+	}
+	// Extension present — create the chunks table if not already there.
+	_, err := d.Exec(`CREATE TABLE IF NOT EXISTS knowledge_chunks (
+		id         BIGSERIAL PRIMARY KEY,
+		doc_id     BIGINT NOT NULL REFERENCES knowledge_docs(id) ON DELETE CASCADE,
+		chunk_index INT NOT NULL DEFAULT 0,
+		content    TEXT NOT NULL DEFAULT '',
+		embedding  vector,
+		embed_model TEXT NOT NULL DEFAULT '',
+		embed_dim  INT NOT NULL DEFAULT 0
+	)`)
+	if err != nil {
+		_ = d.SetBool("knowledge.vector_available", false)
+		return
+	}
+	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_kchunk_doc ON knowledge_chunks(doc_id)`)
+	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_kchunk_model ON knowledge_chunks(embed_model)`)
+	_ = d.SetBool("knowledge.vector_available", true)
+}
+
 // ---------- embedder config ----------
 
 func (d *DB) GetKnowledgeConfig() (*KnowledgeConfig, error) {

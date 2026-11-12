@@ -43,11 +43,22 @@ func (s *Syncer) PullNow() error {
 		log.Printf("[nuclei-sync] pull failed: %v\n%s", err, out)
 		return err
 	}
+	// Snapshot tag set before rebuild to compute the diff.
+	before := make(map[string]struct{}, len(s.idx.Tags()))
+	for _, t := range s.idx.Tags() {
+		before[t] = struct{}{}
+	}
 	s.idx.Rebuild()
 	newCount, tg, at := s.idx.Stats()
 	log.Printf("[nuclei-sync] index ready: %d templates %d tags (%s)", newCount, tg, at.Format(time.RFC3339))
 	if s.onUpdate != nil {
-		s.onUpdate(nil) // nil tags = "something changed, check for new coverage"
+		var added []string
+		for _, t := range s.idx.Tags() {
+			if _, existed := before[t]; !existed {
+				added = append(added, t)
+			}
+		}
+		s.onUpdate(added)
 	}
 	return nil
 }

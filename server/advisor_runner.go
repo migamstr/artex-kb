@@ -95,6 +95,28 @@ func (s *Server) buildReviewInput(t *Task, intentID int64) (advisor.ReviewInput,
 		}
 	}
 
+	// assets anchored to this intent (for coverage-gap check)
+	if s.m.assets != nil {
+		if assetIDs, err := t.Store.AnchoredAssetIDs(intentID); err == nil && len(assetIDs) > 0 {
+			if assets, err := s.m.assets.GetByIDs(assetIDs); err == nil {
+				for _, a := range assets {
+					switch {
+					case len(a.Technologies) > 0:
+						for _, tech := range a.Technologies {
+							in.NewAssets = append(in.NewAssets, tech)
+						}
+					case a.URL != "":
+						in.NewAssets = append(in.NewAssets, a.URL)
+					case a.Domain != "":
+						in.NewAssets = append(in.NewAssets, a.Domain)
+					case a.IP != "":
+						in.NewAssets = append(in.NewAssets, a.IP)
+					}
+				}
+			}
+		}
+	}
+
 	// task scope
 	if s.m.assets != nil {
 		if id, err := strconv.ParseInt(t.ID, 10, 64); err == nil {
