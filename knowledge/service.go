@@ -15,6 +15,9 @@ type Service struct{ pg *db.DB }
 
 func NewService(pg *db.DB) *Service { return &Service{pg: pg} }
 
+// PG returns the underlying DB handle (used by the Advisor to write docs).
+func (s *Service) PG() *db.DB { return s.pg }
+
 const (
 	chunkChars   = 700
 	chunkOverlap = 80

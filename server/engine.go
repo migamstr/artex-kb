@@ -155,9 +155,17 @@ type Engine struct {
 	// Ready()/the llm_configured indicator. Wired once at startup; nil → not ready.
 	readiness    func() bool
 	proxyFailure func(taskID string, err error)
+	// onWorkerDone is called asynchronously after each intent completes.
+	// Used by the Advisor (Review mode). nil = no-op.
+	onWorkerDone func(ctx context.Context, t *Task, intentID int64)
+	// onTaskDone is called asynchronously when a task transitions to done.
+	// Used by the Advisor (Summarize mode). nil = no-op.
+	onTaskDone func(ctx context.Context, t *Task)
 }
 
 func (e *Engine) SetProxyFailureHandler(fn func(string, error)) { e.proxyFailure = fn }
+func (e *Engine) SetOnWorkerDone(fn func(context.Context, *Task, int64)) { e.onWorkerDone = fn }
+func (e *Engine) SetOnTaskDone(fn func(context.Context, *Task))           { e.onTaskDone = fn }
 
 type slotAvailability struct {
 	available bool
@@ -932,6 +940,9 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 				} else if won {
 					e.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
 						Summary: "目标已全部达成，直投意图已执行完毕，任务结束"})
+					if e.onTaskDone != nil {
+						e.onTaskDone(loopCtx, t)
+					}
 				}
 			}
 			return // goalless 分支永不进入 planner.Plan
@@ -978,6 +989,8 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 			// 所有目标达成 → 持久化任务状态为 done（前端 DTO 会优先展示该终态）。
 			if err := e.m.SetTaskStatus(t.ID, "done"); err != nil {
 				log.Printf("[planner] task %s 标记完成落库失败: %v", t.ID, err)
+			} else if e.onTaskDone != nil {
+				e.onTaskDone(ectx, t)
 			}
 			// 任务已判完成 → 立刻取消在跑的 worker：它们手头的意图跑出来也没意义了。
 			// 下一轮 worker 循环撞终态门就不再领新意图;被取消的这批走下方"任务已完成"分支
@@ -1272,6 +1285,9 @@ func (e *Engine) runIntent(ctx context.Context, t *Task, name string, worker *ag
 	}
 	log.Printf("[worker %s] task %s 意图 #%d 结束: %s (写回 %s)", name, t.ID, intent.ID, state, wrote)
 	e.touch(t.ID)
+	if e.onWorkerDone != nil {
+		e.onWorkerDone(ctx, t, intent.ID)
+	}
 	t.NotifyDone(intent.ID) // results changed the graph -> wake the planner (with the just-finished intent id)
 	return true
 }

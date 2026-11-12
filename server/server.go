@@ -277,8 +277,14 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		go newNotifier(s).Run(s.ctx)
 		// nuclei-templates daily sync
 		if m.nucleiSyncer != nil {
+			m.nucleiSyncer.SetOnUpdate(func(newTags []string) {
+				s.TriggerOptimize(s.ctx, newTags)
+			})
 			go m.nucleiSyncer.Run(s.ctx)
 		}
+		// wire Advisor callbacks into the engine
+		s.engine.SetOnWorkerDone(s.triggerReview)
+		s.engine.SetOnTaskDone(s.triggerSummarize)
 		// Fill the tool cache for any enabled MCP that has none yet (notably the
 		// seeded browser MCP on first run). Async so it never blocks startup.
 		go s.discoverEmptyMCPsOnStartup()

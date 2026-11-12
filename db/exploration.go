@@ -1003,6 +1003,58 @@ func (s *ExplorationStore) Edges(limit int) ([]Edge, error) {
 // fact), oldest first. Used to spell out the round's incremental facts to the planner
 // alongside the finished worker's output. Best-effort: returns nil for an intent with
 // no facts (or a missing one).
+// FindingsYieldedByIntent returns finding node IDs yielded by the given intent.
+func (s *ExplorationStore) FindingsYieldedByIntent(intentID int64) ([]int64, error) {
+	rows, err := s.db.Query(
+		`SELECT n.id FROM exploration_nodes n
+		 JOIN exploration_edges e ON e.to_id=n.id
+		 WHERE e.exploration_id=$1 AND e.from_id=$2 AND e.rel=$3 AND n.kind='finding'
+		 ORDER BY n.id`,
+		s.expID, intentID, RelYields)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
+}
+
+// AllConfirmedFindings returns all confirmed finding nodes in this exploration.
+func (s *ExplorationStore) AllConfirmedFindings() ([]*Node, error) {
+	rows, err := s.db.Query(
+		`SELECT id, payload FROM exploration_nodes
+		 WHERE exploration_id=$1 AND kind='finding' AND state='confirmed'
+		 ORDER BY id`,
+		s.expID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Node
+	for rows.Next() {
+		n := &Node{Kind: "finding", State: "confirmed"}
+		if err := rows.Scan(&n.ID, &n.Payload); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out, rows.Err()
+}
+
+// AddHint adds a strategic hint to the exploration graph (Advisor use).
+func (s *ExplorationStore) AddHint(text string) error {
+	if text == "" {
+		return nil
+	}
+	_, err := s.AddNode("hint", map[string]any{"text": text, "source": "advisor"}, 7, "open", "advisor", nil)
+	return err
+}
+
 func (s *ExplorationStore) FactsYielded(intentID int64) ([]int64, error) {
 	rows, err := s.db.Query(`SELECT n.id
 		FROM exploration_edges e

@@ -9,7 +9,14 @@ import (
 
 const syncInterval = 24 * time.Hour
 
-type Syncer struct{ idx *Index }
+type Syncer struct {
+	idx      *Index
+	onUpdate func(newTags []string) // called after each successful pull+rebuild
+}
+
+// SetOnUpdate registers a callback invoked after each successful pull.
+// newTags contains the tag names that were added in this pull (best-effort diff).
+func (s *Syncer) SetOnUpdate(fn func([]string)) { s.onUpdate = fn }
 
 func NewSyncer(idx *Index) *Syncer { return &Syncer{idx: idx} }
 
@@ -37,8 +44,11 @@ func (s *Syncer) PullNow() error {
 		return err
 	}
 	s.idx.Rebuild()
-	tc, tg, at := s.idx.Stats()
-	log.Printf("[nuclei-sync] index ready: %d templates %d tags (%s)", tc, tg, at.Format(time.RFC3339))
+	newCount, tg, at := s.idx.Stats()
+	log.Printf("[nuclei-sync] index ready: %d templates %d tags (%s)", newCount, tg, at.Format(time.RFC3339))
+	if s.onUpdate != nil {
+		s.onUpdate(nil) // nil tags = "something changed, check for new coverage"
+	}
 	return nil
 }
 

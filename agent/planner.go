@@ -55,6 +55,10 @@ func NewPlanner(prov llm.Provider, model, workDir string, tx *transcript.Store, 
 
 func (p *Planner) SetCompactionWindowResolver(fn func() int) { p.windowFn = fn }
 
+// Provider returns the LLM provider this Planner uses.
+// Used by the Advisor to run advisory completions on the same model.
+func (p *Planner) Provider() llm.Provider { return p.prov }
+
 // SetCompactor wires the cold-node compactor (cold-digest §7). Called each
 // planner wake-up to advance the round counter, maintain cold stamps, and
 // (off the hot path) fold cold nodes into digests. nil = feature disabled.
