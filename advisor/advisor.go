@@ -291,7 +291,7 @@ func extractArmor(in ReviewInput, advisorText string) []ArmorEntry {
 			details = append(details, f)
 		}
 		out = append(out, ArmorEntry{
-			Status:   "verified",
+			Status:   db.KBStatusVerified,
 			Category: "auto-finding",
 			Title:    fmt.Sprintf("intent #%d: %s", in.IntentID, truncateStr(in.Intent, 60)),
 			Content:  strings.Join(details, "\n"),
@@ -303,7 +303,7 @@ func extractArmor(in ReviewInput, advisorText string) []ArmorEntry {
 	for _, kw := range negKeywords {
 		if strings.Contains(lower, kw) && len(in.NewFacts) > 0 {
 			out = append(out, ArmorEntry{
-				Status:   "negative",
+				Status:   db.KBStatusNegative,
 				Category: "auto-negative",
 				Title:    fmt.Sprintf("❌ intent #%d 无效路径: %s", in.IntentID, truncateStr(in.Intent, 60)),
 				Content:  strings.Join(in.NewFacts, "\n"),

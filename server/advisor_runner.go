@@ -287,9 +287,7 @@ func (s *Server) runOptimize(ctx context.Context, newTags []string) {
 		if s.m.pg == nil {
 			continue
 		}
-		content := fmt.Sprintf("建议[%s]：%s
-
-模板触发标签：%s", item.Severity, item.Suggestion, joinTags(newTags, 10))
+		content := fmt.Sprintf("建议[%s]：%s\n\n模板触发标签：%s", item.Severity, item.Suggestion, joinTags(newTags, 10))
 		if _, err := s.m.pg.AddKnowledgeDoc(&dbpkg.KnowledgeDoc{
 			Scope:    "global",
 			Category: "nuclei-optimize",

@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"time"
 	"fmt"
 	"io"
 	"log"
@@ -106,7 +108,9 @@ func (s *Server) handleCreateKnowledgeDoc(w http.ResponseWriter, r *http.Request
 	// Index asynchronously if KB service available.
 	go func() {
 		kb := knowledge.NewService(s.m.pg)
-		if err := kb.IndexDoc(r.Context(), id); err != nil {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		if err := kb.IndexDoc(bgCtx, id); err != nil {
 			log.Printf("[knowledge-api] index doc #%d: %v", id, err)
 		}
 	}()

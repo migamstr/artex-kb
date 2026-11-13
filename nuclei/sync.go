@@ -101,8 +101,7 @@ func (s *Syncer) IngestNewCVEs() {
 		parts = append(parts, fmt.Sprintf("severity: %s", e.Severity))
 		parts = append(parts, fmt.Sprintf("tags: %s", strings.Join(e.Tags, ", ")))
 		parts = append(parts, fmt.Sprintf("template: %s", e.ID))
-		content := strings.Join(parts, "
-")
+		content := strings.Join(parts, "\n")
 		_, ok, err := s.pg.UpsertCVEDoc(title, content)
 		if err != nil {
 			log.Printf("[nuclei-sync] ingest CVE %s: %v", e.ID, err)

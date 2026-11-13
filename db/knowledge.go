@@ -129,9 +129,7 @@ func (d *DB) IncrKnowledgeHitCount(ids []int64) {
 	if len(ids) == 0 {
 		return
 	}
-	for _, id := range ids {
-		_, _ = d.Exec(`UPDATE knowledge_docs SET hit_count=hit_count+1 WHERE id=$1`, id)
-	}
+	_, _ = d.Exec(`UPDATE knowledge_docs SET hit_count=hit_count+1 WHERE id = ANY($1::bigint[])`, ids)
 }
 
 // SearchArmorDocs returns verified knowledge docs matching the given tags/keywords,
