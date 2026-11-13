@@ -165,18 +165,21 @@ func (s *Server) handleSearchKnowledgeDocs(w http.ResponseWriter, r *http.Reques
 	if tid := r.URL.Query().Get("task_id"); tid != "" {
 		taskID, _ = strconv.ParseInt(tid, 10, 64)
 	}
-	limit := 10
+	limit := 20
 	if l := r.URL.Query().Get("limit"); l != "" {
 		if n, err := strconv.Atoi(l); err == nil && n > 0 {
 			limit = n
 		}
 	}
-	docs, err := s.m.pg.SearchArmorDocs(q, taskID, limit)
+	kb := knowledge.NewService(s.m.pg)
+	searchCtx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	hits, mode, err := kb.Search(searchCtx, q, taskID, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"docs": docs, "count": len(docs), "query": q})
+	writeJSON(w, http.StatusOK, map[string]any{"hits": hits, "count": len(hits), "query": q, "mode": mode})
 }
 
 // handleKnowledgeStats GET /api/knowledge/stats

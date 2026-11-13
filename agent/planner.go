@@ -47,14 +47,14 @@ type Planner struct {
 	// dispatch it step-by-step over rounds instead of front-loading it in parallel.
 	todoMu sync.Mutex
 	todos  map[int64]*actool.TodoStore
-	// armorCache holds the per-task weapon-library block injected on the first
-	// planner round. Computed once per task run, never re-queried.
+	// armorCache holds the per-task weapon-library block with a 2-minute TTL.
+	// Re-queried after TTL so advisor Review writes appear in later planner rounds.
 	armorMu    sync.Mutex
-	armorCache map[int64]string // explorationID → injected block (empty = no hits)
+	armorCache map[int64]armorCacheEntry // explorationID → injected block + timestamp
 }
 
 func NewPlanner(prov llm.Provider, model, workDir string, tx *transcript.Store, window, maxTurns int) *Planner {
-	return &Planner{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns, todos: map[int64]*actool.TodoStore{}, armorCache: map[int64]string{}}
+	return &Planner{prov: prov, model: model, workDir: workDir, tx: tx, window: window, maxTurns: maxTurns, todos: map[int64]*actool.TodoStore{}, armorCache: map[int64]armorCacheEntry{}}
 }
 
 func (p *Planner) SetCompactionWindowResolver(fn func() int) { p.windowFn = fn }

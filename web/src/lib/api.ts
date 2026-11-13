@@ -99,6 +99,7 @@ import type {
   TaskCategory,
   TaskConstraint,
   KnowledgeDoc,
+  KnowledgeHit,
   KnowledgeStats,
   TaskFileListing,
   TaskGoal,
@@ -1660,7 +1661,7 @@ export const api = {
   createKnowledgeDoc: (doc: { scope?: string; category: string; title: string; content: string; status?: string }) =>
     post<{ id: number; message: string }>("/knowledge/docs", doc),
   searchKnowledgeDocs: (q: string, limit = 20) =>
-    get<{ docs: KnowledgeDoc[]; count: number; query: string }>(`/knowledge/docs/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+    get<{ hits: KnowledgeHit[]; count: number; query: string; mode: string }>(`/knowledge/docs/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   updateKnowledgeDocStatus: (id: number, status: string) =>
     patch<{ id: number; status: string }>(`/knowledge/docs/${id}/status`, { status }),
   importKnowledgeFromTask: (taskId: number) =>

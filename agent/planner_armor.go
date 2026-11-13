@@ -4,9 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Autumn-27/artex/db"
 )
+
+const armorCacheTTL = 2 * time.Minute
+
+type armorCacheEntry struct {
+	block string
+	at    time.Time
+}
 
 // armorBlock returns the weapon-library injection block for the planner system
 // prompt. Computed once per task run, cached in armorCache.
@@ -15,9 +23,9 @@ import (
 func (p *Planner) armorBlock(ctx context.Context, taskID int64, ts *db.ExplorationStore, goal string) string {
 	expID := ts.ID()
 	p.armorMu.Lock()
-	if cached, ok := p.armorCache[expID]; ok {
+	if entry, ok := p.armorCache[expID]; ok && time.Since(entry.at) < armorCacheTTL {
 		p.armorMu.Unlock()
-		return cached
+		return entry.block
 	}
 	p.armorMu.Unlock()
 
@@ -32,7 +40,7 @@ func (p *Planner) armorBlock(ctx context.Context, taskID int64, ts *db.Explorati
 	docs, err := pg.SearchArmorDocs(q, taskID, 12)
 	if err != nil || len(docs) == 0 {
 		p.armorMu.Lock()
-		p.armorCache[expID] = ""
+		p.armorCache[expID] = armorCacheEntry{block: "", at: time.Now()}
 		p.armorMu.Unlock()
 		return ""
 	}
@@ -68,7 +76,7 @@ func (p *Planner) armorBlock(ctx context.Context, taskID int64, ts *db.Explorati
 
 	block := b.String()
 	p.armorMu.Lock()
-	p.armorCache[expID] = block
+	p.armorCache[expID] = armorCacheEntry{block: block, at: time.Now()}
 	p.armorMu.Unlock()
 	return block
 }

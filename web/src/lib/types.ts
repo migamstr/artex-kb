@@ -2026,3 +2026,12 @@ export interface KnowledgeStats {
   semantic_ready: boolean;
   by_status: { Status: string; Count: number }[];
 }
+
+export interface KnowledgeHit {
+  doc_id: number;
+  title: string;
+  category: string;
+  scope: string;
+  content: string;
+  score: number;
+}
