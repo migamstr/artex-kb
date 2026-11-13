@@ -2035,3 +2035,11 @@ export interface KnowledgeHit {
   content: string;
   score: number;
 }
+
+export interface KnowledgeConfig {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  has_key: boolean;
+  dim: number;
+}

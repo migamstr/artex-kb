@@ -138,7 +138,7 @@ func (s *Service) Reindex(ctx context.Context) (int, error) {
 	if err := s.pg.ClearKnowledgeChunks(); err != nil {
 		return 0, err
 	}
-	docs, err := s.pg.ListKnowledgeDocs("", 0) // all docs
+	docs, err := s.pg.ListKnowledgeDocs("", 0, "", "") // all docs
 	if err != nil {
 		return 0, err
 	}

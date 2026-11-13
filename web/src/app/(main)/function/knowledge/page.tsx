@@ -6,11 +6,14 @@ import {
   CheckCircle2Icon,
   ChevronRightIcon,
   FilterXIcon,
+  PencilIcon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
+  SettingsIcon,
   ShieldOffIcon,
   SparklesIcon,
+  Trash2Icon,
   XCircleIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,7 +47,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import type { KBStatus, KnowledgeDoc, KnowledgeStats } from "@/lib/types";
+import type { KBStatus, KnowledgeConfig, KnowledgeDoc, KnowledgeStats } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // ---- constants ----
@@ -118,7 +121,10 @@ function DocCard({ doc, selected, onClick }: { doc: KnowledgeDoc; selected: bool
 
 // ---- Detail panel ----
 
-function DocDetail({ doc, onStatusChange }: { doc: KnowledgeDoc; onStatusChange: (id: number, status: string) => void }) {
+function DocDetail({ doc, onStatusChange, onEdit, onDelete }: {
+  doc: KnowledgeDoc; onStatusChange: (id: number, status: string) => void;
+  onEdit: (doc: KnowledgeDoc) => void; onDelete: (id: number) => void;
+}) {
   const sm = STATUS_LABELS[doc.status as KBStatus] ?? STATUS_LABELS.unverified;
   const nextStatuses = (["verified", "unverified", "negative"] as KBStatus[]).filter((s) => s !== doc.status);
   return (
@@ -141,6 +147,12 @@ function DocDetail({ doc, onStatusChange }: { doc: KnowledgeDoc; onStatusChange:
         </div>
       )}
       <div className="flex gap-2 flex-wrap">
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => onEdit(doc)}>
+          <PencilIcon className="w-3.5 h-3.5" />编辑
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-red-500 border-red-500/30 hover:bg-red-500/10" onClick={() => onDelete(doc.id)}>
+          <Trash2Icon className="w-3.5 h-3.5" />删除
+        </Button>
         {nextStatuses.map((s) => (
           <Button key={s} size="sm" variant="outline" className="h-7 text-xs" onClick={() => onStatusChange(doc.id, s)}>
             {s === "verified" && <CheckCircle2Icon className="w-3.5 h-3.5 mr-1 text-green-500" />}
@@ -293,6 +305,151 @@ function CreateDocDialog({ open, onClose, onCreated }: { open: boolean; onClose:
   );
 }
 
+// ---- Edit dialog ----
+
+function EditDocDialog({ doc, onClose, onSaved }: { doc: KnowledgeDoc; onClose: () => void; onSaved: (d: KnowledgeDoc) => void }) {
+  const [form, setForm] = React.useState({ category: doc.category, title: doc.title, content: doc.content ?? "" });
+  const [loading, setLoading] = React.useState(false);
+  async function handleSave() {
+    if (!form.title.trim() || !form.content.trim()) { toast.error("标题和内容不能为空"); return; }
+    setLoading(true);
+    try {
+      await api.updateKnowledgeDoc(doc.id, form);
+      toast.success("已更新");
+      onSaved({ ...doc, ...form });
+      onClose();
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "更新失败"); }
+    finally { setLoading(false); }
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>编辑条目</DialogTitle></DialogHeader>
+        <FieldGroup className="space-y-3">
+          <Field>
+            <FieldLabel>归类</FieldLabel>
+            <Select value={form.category} onValueChange={(v) => setForm((f) => ({ ...f, category: v }))}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(CATEGORY_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                <SelectItem value="other">其他</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>标题</FieldLabel>
+            <input className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+          </Field>
+          <Field>
+            <FieldLabel>内容</FieldLabel>
+            <Textarea rows={8} value={form.content} onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))} />
+          </Field>
+        </FieldGroup>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>取消</Button>
+          <Button onClick={handleSave} disabled={loading}>{loading ? <Spinner className="mr-2" /> : null}保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Config panel ----
+
+function ConfigPanel() {
+  const [cfg, setCfg] = React.useState<KnowledgeConfig | null>(null);
+  const [form, setForm] = React.useState({ enabled: false, base_url: "", model: "", api_key: "", dim: 1024 });
+  const [loading, setLoading] = React.useState(false);
+  const [testing, setTesting] = React.useState(false);
+
+  React.useEffect(() => {
+    void api.getKnowledgeConfig().then((c) => { setCfg(c); setForm({ enabled: c.enabled, base_url: c.base_url, model: c.model, api_key: "", dim: c.dim }); });
+  }, []);
+
+  async function handleSave() {
+    setLoading(true);
+    try {
+      const updated = await api.saveKnowledgeConfig(form);
+      setCfg(updated);
+      toast.success("配置已保存");
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "保存失败"); }
+    finally { setLoading(false); }
+  }
+
+  async function handleTest() {
+    setTesting(true);
+    try {
+      const r = await api.testEmbedder();
+      toast.success(`连通正常，向量维度 ${r.dim}`);
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "连通失败"); }
+    finally { setTesting(false); }
+  }
+
+  async function handleReindex() {
+    if (!confirm("重建索引会清空所有向量块后重新计算，耗时较长。确认执行？")) return;
+    setLoading(true);
+    try {
+      const r = await api.reindexKnowledge();
+      toast.success(r.message);
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "重建失败"); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="p-4 space-y-5 max-w-lg">
+      <div>
+        <h2 className="text-base font-semibold">向量检索配置</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">兼容 OpenAI embeddings API，推荐使用智谱 embedding-3（1024维）。</p>
+      </div>
+      <FieldGroup className="space-y-3">
+        <Field>
+          <FieldLabel>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox checked={form.enabled} onCheckedChange={(v) => setForm((f) => ({ ...f, enabled: !!v }))} />
+              启用语义搜索
+            </label>
+          </FieldLabel>
+        </Field>
+        <Field>
+          <FieldLabel>Base URL</FieldLabel>
+          <input className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="https://open.bigmodel.cn/api/paas/v4" value={form.base_url}
+            onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))} />
+        </Field>
+        <Field>
+          <FieldLabel>模型</FieldLabel>
+          <input className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="embedding-3" value={form.model}
+            onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} />
+        </Field>
+        <Field>
+          <FieldLabel>API Key {cfg?.has_key && <span className="text-xs text-green-500 ml-1">（已设置）</span>}</FieldLabel>
+          <input type="password" className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="留空保持现有 key" value={form.api_key}
+            onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))} />
+        </Field>
+        <Field>
+          <FieldLabel>向量维度</FieldLabel>
+          <input type="number" className="w-full rounded-md border bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            value={form.dim} onChange={(e) => setForm((f) => ({ ...f, dim: parseInt(e.target.value) || 1024 }))} />
+        </Field>
+      </FieldGroup>
+      <div className="flex gap-2 flex-wrap">
+        <Button onClick={handleSave} disabled={loading} className="h-7 text-xs">
+          {loading ? <Spinner className="mr-1" /> : null}保存配置
+        </Button>
+        <Button variant="outline" onClick={handleTest} disabled={testing} className="h-7 text-xs">
+          {testing ? <Spinner className="mr-1" /> : <SparklesIcon className="w-3.5 h-3.5 mr-1" />}测试连通
+        </Button>
+        <Button variant="outline" onClick={handleReindex} disabled={loading} className="h-7 text-xs text-yellow-600 border-yellow-600/30 hover:bg-yellow-500/10">
+          重建向量索引
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Main page ----
 
 export default function KnowledgePage() {
@@ -305,6 +462,8 @@ export default function KnowledgePage() {
   const [onlyVerified, setOnlyVerified] = React.useState(false);
   const [selected, setSelected] = React.useState<KnowledgeDoc | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [editDoc, setEditDoc] = React.useState<KnowledgeDoc | null>(null);
+  const [showConfig, setShowConfig] = React.useState(false);
 
   async function load() {
     setLoading(true);
@@ -324,6 +483,17 @@ export default function KnowledgePage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => { void load(); }, [filterStatus, filterCategory, onlyVerified]);
+
+  async function handleDelete(id: number) {
+    if (!confirm("确认删除该条目？此操作不可撤销。")) return;
+    try {
+      await api.deleteKnowledgeDoc(id);
+      toast.success("已删除");
+      setSelected((prev) => prev?.id === id ? null : prev);
+      setDocs((prev) => prev.filter((d) => d.id !== id));
+      void api.knowledgeStats().then(setStats);
+    } catch { toast.error("删除失败"); }
+  }
 
   async function handleStatusChange(id: number, status: string) {
     try {
@@ -420,19 +590,35 @@ export default function KnowledgePage() {
             <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => void load()}>
               <RefreshCwIcon className="w-3.5 h-3.5" />刷新
             </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => { setShowConfig(!showConfig); setSelected(null); }}>
+              <SettingsIcon className="w-3.5 h-3.5" />配置
+            </Button>
             <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setCreateOpen(true)}>
               <PlusIcon className="w-3.5 h-3.5" />新建条目
             </Button>
           </div>
         </div>
-        {selected ? (
-          <DocDetail doc={selected} onStatusChange={handleStatusChange} />
+        {showConfig ? (
+          <ConfigPanel />
+        ) : selected ? (
+          <DocDetail doc={selected} onStatusChange={handleStatusChange} onEdit={setEditDoc} onDelete={handleDelete} />
         ) : (
           <OverviewPanel stats={stats} />
         )}
       </div>
 
       <CreateDocDialog open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => void load()} />
+      {editDoc && (
+        <EditDocDialog
+          doc={editDoc}
+          onClose={() => setEditDoc(null)}
+          onSaved={(updated) => {
+            setDocs((prev) => prev.map((d) => d.id === updated.id ? { ...d, ...updated } : d));
+            setSelected((prev) => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+            setEditDoc(null);
+          }}
+        />
+      )}
     </div>
   );
 }

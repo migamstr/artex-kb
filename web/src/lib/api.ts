@@ -98,6 +98,7 @@ import type {
   TaskAssetScopeMutation,
   TaskCategory,
   TaskConstraint,
+  KnowledgeConfig,
   KnowledgeDoc,
   KnowledgeHit,
   KnowledgeStats,
@@ -1666,4 +1667,13 @@ export const api = {
     patch<{ id: number; status: string }>(`/knowledge/docs/${id}/status`, { status }),
   importKnowledgeFromTask: (taskId: number) =>
     post<{ imported: number; message: string }>(`/knowledge/import-task/${taskId}`),
+  deleteKnowledgeDoc: (id: number) =>
+    del<{ id: number; deleted: boolean }>(`/knowledge/docs/${id}`),
+  updateKnowledgeDoc: (id: number, doc: { category: string; title: string; content: string }) =>
+    put<{ id: number; updated: boolean }>(`/knowledge/docs/${id}`, doc),
+  getKnowledgeConfig: () => get<KnowledgeConfig>("/knowledge/config"),
+  saveKnowledgeConfig: (cfg: { enabled: boolean; base_url: string; model: string; api_key?: string; dim: number }) =>
+    put<KnowledgeConfig>("/knowledge/config", cfg),
+  reindexKnowledge: () => post<{ indexed: number; message: string }>("/knowledge/reindex"),
+  testEmbedder: () => post<{ ok: boolean; dim: number }>("/knowledge/config/test"),
 };

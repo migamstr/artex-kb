@@ -259,3 +259,139 @@ func (s *Server) handleImportFromTask(w http.ResponseWriter, r *http.Request) {
 		"message": fmt.Sprintf("imported %d findings from task #%d", count, taskID),
 	})
 }
+
+// handleDeleteKnowledgeDoc DELETE /api/knowledge/docs/{id}
+func (s *Server) handleDeleteKnowledgeDoc(w http.ResponseWriter, r *http.Request) {
+	if s.m.pg == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "db unavailable"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid id"})
+		return
+	}
+	if err := s.m.pg.DeleteKnowledgeDoc(id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "deleted": true})
+}
+
+// handleUpdateKnowledgeDoc PUT /api/knowledge/docs/{id}
+// Body: {"category":"...","title":"...","content":"..."}
+func (s *Server) handleUpdateKnowledgeDoc(w http.ResponseWriter, r *http.Request) {
+	if s.m.pg == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "db unavailable"})
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid id"})
+		return
+	}
+	var body struct {
+		Category string `json:"category"`
+		Title    string `json:"title"`
+		Content  string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	if body.Title == "" || body.Content == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "title and content required"})
+		return
+	}
+	if err := s.m.pg.UpdateKnowledgeDoc(id, body.Category, body.Title, body.Content); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	// Re-index asynchronously so semantic search stays fresh.
+	go func() {
+		kb := knowledge.NewService(s.m.pg)
+		bgCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		if err := kb.IndexDoc(bgCtx, id); err != nil {
+			log.Printf("[knowledge-api] re-index doc #%d: %v", id, err)
+		}
+	}()
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "updated": true})
+}
+
+// handleGetKnowledgeConfig GET /api/knowledge/config
+func (s *Server) handleGetKnowledgeConfig(w http.ResponseWriter, r *http.Request) {
+	if s.m.pg == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "db unavailable"})
+		return
+	}
+	cfg, err := s.m.pg.GetKnowledgeConfig()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+// handleSaveKnowledgeConfig PUT /api/knowledge/config
+// Body: {"enabled":true,"base_url":"...","model":"...","api_key":"...","dim":1024}
+// Empty api_key keeps the existing key.
+func (s *Server) handleSaveKnowledgeConfig(w http.ResponseWriter, r *http.Request) {
+	if s.m.pg == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "db unavailable"})
+		return
+	}
+	var body struct {
+		Enabled bool   `json:"enabled"`
+		BaseURL string `json:"base_url"`
+		Model   string `json:"model"`
+		APIKey  string `json:"api_key"`
+		Dim     int    `json:"dim"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	if err := s.m.pg.SaveKnowledgeConfig(body.Enabled, body.BaseURL, body.Model, body.APIKey, body.Dim); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	cfg, _ := s.m.pg.GetKnowledgeConfig()
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+// handleReindexKnowledge POST /api/knowledge/reindex
+// Rebuilds all vector chunks from scratch. Long-running; runs synchronously up to 5 min.
+func (s *Server) handleReindexKnowledge(w http.ResponseWriter, r *http.Request) {
+	if s.m.pg == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "db unavailable"})
+		return
+	}
+	kb := knowledge.NewService(s.m.pg)
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+	defer cancel()
+	n, err := kb.Reindex(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"indexed": n, "message": fmt.Sprintf("重建完成：%d 篇文档", n)})
+}
+
+// handleTestEmbedder POST /api/knowledge/config/test
+// Verifies the configured embedder. Returns the actual vector dimension.
+func (s *Server) handleTestEmbedder(w http.ResponseWriter, r *http.Request) {
+	if s.m.pg == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "db unavailable"})
+		return
+	}
+	kb := knowledge.NewService(s.m.pg)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	dim, err := kb.TestEmbedder(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error(), "ok": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dim": dim})
+}
