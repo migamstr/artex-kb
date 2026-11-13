@@ -1667,6 +1667,8 @@ export const api = {
     patch<{ id: number; status: string }>(`/knowledge/docs/${id}/status`, { status }),
   importKnowledgeFromTask: (taskId: number) =>
     post<{ imported: number; message: string }>(`/knowledge/import-task/${taskId}`),
+  saveFindingToKB: (findingId: number) =>
+    post<{ id: number; created: boolean; message: string }>(`/knowledge/from-finding/${findingId}`),
   deleteKnowledgeDoc: (id: number) =>
     del<{ id: number; deleted: boolean }>(`/knowledge/docs/${id}`),
   updateKnowledgeDoc: (id: number, doc: { category: string; title: string; content: string }) =>

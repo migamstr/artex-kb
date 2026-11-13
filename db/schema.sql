@@ -1719,3 +1719,8 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_docs_hit    ON knowledge_docs(hit_count
 -- Enables INSERT ... ON CONFLICT DO NOTHING for bulk CVE ingest.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_docs_cve_title
     ON knowledge_docs(title) WHERE category = 'cve-nuclei';
+
+-- ── R4. Finding 来源关联（幂等）────────────────────────────────────────────────
+-- Tracks which finding a knowledge doc was written from (for dedup + provenance).
+ALTER TABLE knowledge_docs ADD COLUMN IF NOT EXISTS source_finding_id BIGINT REFERENCES findings(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_knowledge_docs_finding ON knowledge_docs(source_finding_id) WHERE source_finding_id IS NOT NULL;

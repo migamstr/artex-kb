@@ -192,10 +192,15 @@ function OverviewPanel({ stats }: { stats: KnowledgeStats | null }) {
           </Card>
         ))}
       </div>
-      {stats?.semantic_ready && (
+      {stats?.semantic_ready ? (
         <div className="rounded-md border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-600 flex items-center gap-1.5">
           <SparklesIcon className="w-3.5 h-3.5" />
           语义搜索已就绪（pgvector）
+        </div>
+      ) : (
+        <div className="rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-700 flex items-center gap-1.5">
+          <SparklesIcon className="w-3.5 h-3.5" />
+          语义搜索未就绪，当前降级为关键词匹配（ILIKE）。去「配置」启用向量检索：推荐智谱 embedding-3（1024维）。
         </div>
       )}
       <Card>

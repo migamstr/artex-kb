@@ -125,6 +125,7 @@ func (s *Service) SearchAndLog(ctx context.Context, query string, taskID int64, 
 			ids = append(ids, h.DocID)
 		}
 		s.pg.AddKnowledgeRetrievalLog(taskID, agentKey, query, scope, mode, topK, len(hits), ids)
+		go s.pg.IncrKnowledgeHitCount(ids)
 	}
 	return hits, mode, err
 }

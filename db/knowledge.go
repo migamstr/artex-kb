@@ -27,8 +27,9 @@ type KnowledgeDoc struct {
 	Chunks       int       `json:"chunks"`  // vector chunk count (computed)
 	Status       string    `json:"status"`  // unverified | verified | negative
 	HitCount     int       `json:"hit_count"`
-	SourceTaskID *int64    `json:"source_task_id,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
+	SourceTaskID    *int64 `json:"source_task_id,omitempty"`
+	SourceFindingID *int64 `json:"source_finding_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
@@ -121,6 +122,16 @@ func (d *DB) EnsureKnowledgeVectorSchema() {
 
 // ---------- embedder config ----------
 
+
+// KnowledgeDocByFindingID returns the doc written from a specific finding, if any.
+func (d *DB) KnowledgeDocByFindingID(findingID int64) (int64, error) {
+	var id int64
+	err := d.QueryRow(`SELECT id FROM knowledge_docs WHERE source_finding_id=$1 LIMIT 1`, findingID).Scan(&id)
+	if err != nil {
+		return 0, nil // not found is fine
+	}
+	return id, nil
+}
 
 // IsValidKBStatus reports whether s is a valid knowledge doc status value.
 func IsValidKBStatus(s string) bool {
@@ -291,9 +302,13 @@ func (d *DB) AddKnowledgeDoc(doc *KnowledgeDoc) (int64, error) {
 	if doc.SourceTaskID != nil {
 		stid = *doc.SourceTaskID
 	}
-	err := d.QueryRow(`INSERT INTO knowledge_docs (scope, task_id, category, title, content, source, file_name, bytes, status, source_task_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-		scope, tid, strings.TrimSpace(doc.Category), strings.TrimSpace(doc.Title), doc.Content, source, doc.FileName, bytes, status, stid).Scan(&id)
+	var sfid interface{} = nil
+	if doc.SourceFindingID != nil {
+		sfid = *doc.SourceFindingID
+	}
+	err := d.QueryRow(`INSERT INTO knowledge_docs (scope, task_id, category, title, content, source, file_name, bytes, status, source_task_id, source_finding_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+		scope, tid, strings.TrimSpace(doc.Category), strings.TrimSpace(doc.Title), doc.Content, source, doc.FileName, bytes, status, stid, sfid).Scan(&id)
 	return id, err
 }
 

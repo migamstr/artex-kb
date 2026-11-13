@@ -146,6 +146,17 @@ func (a *Advisor) Summarize(ctx context.Context, in SummarizeInput) (int, error)
 	if body == "" {
 		return 0, nil
 	}
+	// Dedup: skip if a lesson for this task was already written (e.g. on retry).
+	if in.TaskID > 0 {
+		var existing int64
+		_ = a.kb.PG().QueryRow(
+			`SELECT id FROM knowledge_docs WHERE category='task-lessons' AND source_task_id=$1 LIMIT 1`,
+			in.TaskID).Scan(&existing)
+		if existing > 0 {
+			log.Printf("[advisor] summarize: task #%d already has lesson doc #%d, skipping", in.TaskID, existing)
+			return 0, nil
+		}
+	}
 	title := fmt.Sprintf("task-%d-lesson", in.TaskID)
 	if in.TaskGoal != "" {
 		g := in.TaskGoal
@@ -154,10 +165,12 @@ func (a *Advisor) Summarize(ctx context.Context, in SummarizeInput) (int, error)
 	}
 	docID, err := a.kb.PG().AddKnowledgeDoc(&db.KnowledgeDoc{
 		Scope:    "global",
-		Category: "task-lessons",
-		Title:    title,
-		Content:  body,
-		Source:   "advisor",
+		Category:     "task-lessons",
+		Title:        title,
+		Content:      body,
+		Source:       "advisor",
+		Status:       db.KBStatusVerified,
+		SourceTaskID: func() *int64 { v := in.TaskID; return &v }(), // input is confirmed findings; treat summary as verified
 	})
 	if err != nil {
 		return 0, fmt.Errorf("advisor summarize write: %w", err)

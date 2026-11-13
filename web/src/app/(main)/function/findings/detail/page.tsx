@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
-import { ArrowLeftIcon, ArrowUpRightIcon, BotIcon, FileTextIcon, Loader2Icon, ShieldAlertIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowUpRightIcon, BookMarkedIcon, BotIcon, FileTextIcon, Loader2Icon, ShieldAlertIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -77,6 +77,8 @@ function FindingDetailInner() {
   const [reportGenerating, setReportGenerating] = React.useState(false);
   const [autoChatOpen, setAutoChatOpen] = React.useState(false);
   const [reportChatOpen, setReportChatOpen] = React.useState(false);
+  const [savingKB, setSavingKB] = React.useState(false);
+  const [savedKBDocId, setSavedKBDocId] = React.useState<number | null>(null);
   const title = finding?.name || finding?.vulnclass || ui("screen.54b89f90127458");
 
   const load = React.useCallback(() => {
@@ -204,7 +206,15 @@ function FindingDetailInner() {
               <BotIcon data-icon="inline-start" />
               {ui("screen.a13bf2e491daad")}
             </Button>
-            {!finding.inherited ? (
+            <Button variant="outline" size="sm"
+              disabled={savingKB || finding.status !== "confirmed"}
+              title={finding.status !== "confirmed" ? "仅已确认的漏洞可写入武器库" : "写入武器库"}
+              onClick={async () => { setSavingKB(true); try { const r = await api.saveFindingToKB(Number(finding.finding_id ?? finding.id)); setSavedKBDocId(r.id); toast.success(r.created ? "已写入武器库" : "武器库中已存在"); } catch (e: unknown) { toast.error(e instanceof Error ? e.message : "写入失败"); } finally { setSavingKB(false); } }}
+            >
+              {savingKB ? <Loader2Icon data-icon="inline-start" className="animate-spin" /> : <BookMarkedIcon data-icon="inline-start" />}
+              {savedKBDocId ? "已在武器库" : "写入武器库"}
+            </Button>
+              {!finding.inherited ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -277,7 +287,7 @@ function FindingDetailInner() {
                           {finding.report && (
                             <CopyButton text={finding.report} successMessage={ui("screen.10a2e40390af5f")} />
                           )}
-                          {!finding.inherited ? (
+                            {!finding.inherited ? (
                             <Button
                               variant="outline"
                               size="sm"

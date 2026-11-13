@@ -395,3 +395,65 @@ func (s *Server) handleTestEmbedder(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dim": dim})
 }
+
+// handleSaveFindingToKB POST /api/knowledge/from-finding/{id}
+// Writes a confirmed finding into the weapon library as a verified knowledge doc.
+// Idempotent: if a doc already exists for this finding, returns the existing doc id.
+func (s *Server) handleSaveFindingToKB(w http.ResponseWriter, r *http.Request) {
+	if s.m.pg == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "db unavailable"})
+		return
+	}
+	findingID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid id"})
+		return
+	}
+	// Dedup: return existing doc if already saved.
+	if existing, _ := s.m.pg.KnowledgeDocByFindingID(findingID); existing > 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"id": existing, "created": false, "message": "已存在"})
+		return
+	}
+	f, err := s.m.pg.GetFinding(findingID)
+	if err != nil || f == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "finding not found"})
+		return
+	}
+	title := f.Name
+	if title == "" {
+		title = f.VulnClass
+	}
+	content := fmt.Sprintf("漏洞类型: %s\n严重级别: %s\n\n%s", f.VulnClass, f.Severity, f.Summary)
+	if f.Evidence != "" {
+		content += "\n\n证据:\n" + f.Evidence
+	}
+	var taskID int64
+	if f.TaskID != nil {
+		taskID = *f.TaskID
+	}
+	doc := &dbpkg.KnowledgeDoc{
+		Scope:           "global",
+		Category:        "auto-finding",
+		Title:           fmt.Sprintf("[%s] %s", f.Severity, title),
+		Content:         content,
+		Source:          "finding",
+		Status:          dbpkg.KBStatusVerified,
+		SourceFindingID: &findingID,
+	}
+	if taskID > 0 {
+		doc.SourceTaskID = &taskID
+	}
+	id, err := s.m.pg.AddKnowledgeDoc(doc)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	// Index asynchronously.
+	go func() {
+		kb := knowledge.NewService(s.m.pg)
+		bgCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		_ = kb.IndexDoc(bgCtx, id)
+	}()
+	writeJSON(w, http.StatusCreated, map[string]any{"id": id, "created": true, "message": "已写入武器库"})
+}

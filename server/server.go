@@ -837,6 +837,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/knowledge/config", s.requireAuth(s.handleSaveKnowledgeConfig))
 	mux.HandleFunc("POST /api/knowledge/reindex", s.requireAuth(s.handleReindexKnowledge))
 	mux.HandleFunc("POST /api/knowledge/config/test", s.requireAuth(s.handleTestEmbedder))
+	mux.HandleFunc("POST /api/knowledge/from-finding/{id}", s.requireAuth(s.handleSaveFindingToKB))
 	mux.HandleFunc("GET /api/update/settings", s.getUpdateSettings)
 	mux.HandleFunc("PUT /api/update/settings", s.putUpdateSettings)
 	mux.HandleFunc("GET /api/update/check", s.updateCheck)

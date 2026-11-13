@@ -2016,6 +2016,7 @@ export interface KnowledgeDoc {
   status: KBStatus;
   hit_count: number;
   source_task_id?: number;
+  source_finding_id?: number;
   created_at: string;
   updated_at: string;
 }
