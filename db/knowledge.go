@@ -7,6 +7,7 @@ package db
 
 import (
 	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -112,11 +113,19 @@ func (d *DB) EnsureKnowledgeVectorSchema() {
 	}
 	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_kchunk_doc ON knowledge_chunks(doc_id)`)
 	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_kchunk_model ON knowledge_chunks(embed_model)`)
+	// Best-effort approximate-nearest-neighbour index for cosine similarity search.
+	// Silently skipped when pgvector doesn't support hnsw (< 0.5.0) or dim is 0.
+	_, _ = d.Exec(`CREATE INDEX IF NOT EXISTS idx_kchunk_emb ON knowledge_chunks USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL`)
 	_ = d.SetBool("knowledge.vector_available", true)
 }
 
 // ---------- embedder config ----------
 
+
+// IsValidKBStatus reports whether s is a valid knowledge doc status value.
+func IsValidKBStatus(s string) bool {
+	return s == KBStatusUnverified || s == KBStatusVerified || s == KBStatusNegative
+}
 
 // SetKnowledgeDocStatus updates the verification status of a knowledge doc.
 func (d *DB) SetKnowledgeDocStatus(id int64, status string) error {
@@ -316,7 +325,7 @@ func (d *DB) GetKnowledgeDoc(id int64) (*KnowledgeDoc, error) {
 // ListKnowledgeDocs returns docs for a scope. scope="global" → global only;
 // scope="task"+taskID → that task only; taskID>0 with empty scope → global + that
 // task (what an agent sees); otherwise all. Content is omitted (use GetKnowledgeDoc).
-func (d *DB) ListKnowledgeDocs(scope string, taskID int64) ([]*KnowledgeDoc, error) {
+func (d *DB) ListKnowledgeDocs(scope string, taskID int64, category string, status string) ([]*KnowledgeDoc, error) {
 	var where string
 	var args []any
 	switch {
@@ -329,7 +338,24 @@ func (d *DB) ListKnowledgeDocs(scope string, taskID int64) ([]*KnowledgeDoc, err
 		where = "WHERE scope='global' OR (scope='task' AND task_id=$1)"
 		args = append(args, taskID)
 	}
-	q := `SELECT id, scope, task_id, category, title, source, file_name, bytes, indexed, created_at, updated_at
+	// Apply optional category/status filters.
+	if category != "" {
+		if where == "" {
+			where = fmt.Sprintf("WHERE category=$%d", len(args)+1)
+		} else {
+			where += fmt.Sprintf(" AND category=$%d", len(args)+1)
+		}
+		args = append(args, category)
+	}
+	if status != "" {
+		if where == "" {
+			where = fmt.Sprintf("WHERE status=$%d", len(args)+1)
+		} else {
+			where += fmt.Sprintf(" AND status=$%d", len(args)+1)
+		}
+		args = append(args, status)
+	}
+	q := `SELECT id, scope, task_id, category, title, source, file_name, bytes, indexed, status, hit_count, created_at, updated_at
 		FROM knowledge_docs ` + where + ` ORDER BY scope, category, created_at DESC`
 	rows, err := d.Query(q, args...)
 	if err != nil {
@@ -340,7 +366,7 @@ func (d *DB) ListKnowledgeDocs(scope string, taskID int64) ([]*KnowledgeDoc, err
 	for rows.Next() {
 		var doc KnowledgeDoc
 		var tid sql.NullInt64
-		if err := rows.Scan(&doc.ID, &doc.Scope, &tid, &doc.Category, &doc.Title, &doc.Source, &doc.FileName, &doc.Bytes, &doc.Indexed, &doc.CreatedAt, &doc.UpdatedAt); err != nil {
+		if err := rows.Scan(&doc.ID, &doc.Scope, &tid, &doc.Category, &doc.Title, &doc.Source, &doc.FileName, &doc.Bytes, &doc.Indexed, &doc.Status, &doc.HitCount, &doc.CreatedAt, &doc.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if tid.Valid {
@@ -399,6 +425,24 @@ func (d *DB) ListKnowledgeCategories(taskID int64) ([]string, error) {
 			return nil, err
 		}
 		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// KnowledgeStatusCounts returns a map of status -> count for all knowledge docs.
+func (d *DB) KnowledgeStatusCounts() (map[string]int, error) {
+	rows, err := d.Query(`SELECT status, COUNT(*) FROM knowledge_docs GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var status string
+		var count int
+		if rows.Scan(&status, &count) == nil {
+			out[status] = count
+		}
 	}
 	return out, rows.Err()
 }

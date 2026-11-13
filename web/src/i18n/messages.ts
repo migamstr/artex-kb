@@ -49,6 +49,7 @@ export const messages = {
   "nav.commands": ["工具执行", "Tool executions"],
   "nav.llm-records": ["LLM 录制", "LLM recordings"],
   "nav.assets": ["资产", "Assets"],
+  "nav.knowledge": ["\xe6\xad\xa6\xe5\x99\xa8\xe5\xba\x93", "Weapon library"],
   "nav.sync": ["资产同步", "Asset sync"],
   "nav.workspace": ["工作空间", "Workspace"],
   "nav.llm": ["LLM", "LLM"],

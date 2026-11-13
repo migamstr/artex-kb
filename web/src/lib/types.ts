@@ -1997,3 +1997,32 @@ export interface TaskFileListing {
   truncated: boolean;
   missing: boolean;
 }
+
+// ---- Knowledge base / weapon library ----
+export type KBStatus = "unverified" | "verified" | "negative";
+
+export interface KnowledgeDoc {
+  id: number;
+  scope: "global" | "task";
+  task_id?: number;
+  category: string;
+  title: string;
+  content?: string;
+  source: string;
+  file_name?: string;
+  bytes: number;
+  indexed: boolean;
+  chunks: number;
+  status: KBStatus;
+  hit_count: number;
+  source_task_id?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeStats {
+  global_docs: number;
+  task_docs: number;
+  semantic_ready: boolean;
+  by_status: { Status: string; Count: number }[];
+}

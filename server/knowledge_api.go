@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Autumn-27/artex/db"
+	dbpkg "github.com/Autumn-27/artex/db"
 	"github.com/Autumn-27/artex/knowledge"
 )
 
@@ -22,11 +22,13 @@ func (s *Server) handleListKnowledgeDocs(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	scope := r.URL.Query().Get("scope") // global | task | (empty=all)
+	category := r.URL.Query().Get("category")
+	status := r.URL.Query().Get("status")
 	var taskID int64
 	if tid := r.URL.Query().Get("task_id"); tid != "" {
 		taskID, _ = strconv.ParseInt(tid, 10, 64)
 	}
-	docs, err := s.m.pg.ListKnowledgeDocs(scope, taskID)
+	docs, err := s.m.pg.ListKnowledgeDocs(scope, taskID, category, status)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
@@ -44,7 +46,7 @@ func (s *Server) handleCreateKnowledgeDoc(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	var doc db.KnowledgeDoc
+	var doc dbpkg.KnowledgeDoc
 
 	ct := r.Header.Get("Content-Type")
 	if strings.Contains(ct, "multipart/form-data") {
@@ -93,8 +95,7 @@ func (s *Server) handleCreateKnowledgeDoc(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "title and content required"})
 		return
 	}
-	valid := map[string]bool{"unverified": true, "verified": true, "negative": true}
-	if !valid[doc.Status] {
+	if !dbpkg.IsValidKBStatus(doc.Status) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "status must be unverified|verified|negative"})
 		return
 	}
@@ -138,8 +139,7 @@ func (s *Server) handleUpdateKnowledgeDocStatus(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	valid := map[string]bool{"unverified": true, "verified": true, "negative": true}
-	if !valid[body.Status] {
+	if !dbpkg.IsValidKBStatus(body.Status) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "status must be unverified|verified|negative"})
 		return
 	}
@@ -191,18 +191,18 @@ func (s *Server) handleKnowledgeStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	semanticOK := s.m.pg.KnowledgeVectorAvailable()
-	// count by status
-	type statusCount struct{ Status string; Count int }
-	rows, _ := s.m.pg.Query(
-		`SELECT status, COUNT(*) FROM knowledge_docs GROUP BY status ORDER BY status`)
+	statusMap, err := s.m.pg.KnowledgeStatusCounts()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	type statusCount struct {
+		Status string `json:"Status"`
+		Count  int    `json:"Count"`
+	}
 	var bystatus []statusCount
-	if rows != nil {
-		defer rows.Close()
-		for rows.Next() {
-			var sc statusCount
-			_ = rows.Scan(&sc.Status, &sc.Count)
-			bystatus = append(bystatus, sc)
-		}
+	for s, c := range statusMap {
+		bystatus = append(bystatus, statusCount{Status: s, Count: c})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"global_docs":    global,

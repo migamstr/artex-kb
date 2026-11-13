@@ -98,6 +98,8 @@ import type {
   TaskAssetScopeMutation,
   TaskCategory,
   TaskConstraint,
+  KnowledgeDoc,
+  KnowledgeStats,
   TaskFileListing,
   TaskGoal,
   TaskIntelligence,
@@ -1644,4 +1646,23 @@ export const api = {
   // 202 即返回，实际下载在后台跑，进度走 /api/update/stream。
   applyUpdate: () => post<{ ok: boolean; target: string }>(`/update/apply`),
   rollbackUpdate: () => post<{ ok: boolean }>(`/update/rollback`),
+
+  // ---- Knowledge base / weapon library ----
+  knowledgeStats: () => get<KnowledgeStats>("/knowledge/stats"),
+  listKnowledgeDocs: (params?: { scope?: string; category?: string; status?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.scope) sp.set("scope", params.scope);
+    if (params?.category) sp.set("category", params.category);
+    if (params?.status) sp.set("status", params.status);
+    const qs = sp.toString();
+    return get<{ docs: KnowledgeDoc[]; count: number }>(`/knowledge/docs${qs ? `?${qs}` : ""}`);
+  },
+  createKnowledgeDoc: (doc: { scope?: string; category: string; title: string; content: string; status?: string }) =>
+    post<{ id: number; message: string }>("/knowledge/docs", doc),
+  searchKnowledgeDocs: (q: string, limit = 20) =>
+    get<{ docs: KnowledgeDoc[]; count: number; query: string }>(`/knowledge/docs/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  updateKnowledgeDocStatus: (id: number, status: string) =>
+    patch<{ id: number; status: string }>(`/knowledge/docs/${id}/status`, { status }),
+  importKnowledgeFromTask: (taskId: number) =>
+    post<{ imported: number; message: string }>(`/knowledge/import-task/${taskId}`),
 };
