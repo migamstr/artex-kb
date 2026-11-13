@@ -75,17 +75,16 @@ func (s *Syncer) PullNow() error {
 	return nil
 }
 
-// IngestNewCVEs walks all templates in the index and upserts CVE-tagged entries
-// into knowledge_docs (category=cve-nuclei, status=unverified). Already-existing
-// entries (matched by title) are skipped, so re-runs are idempotent.
+// IngestNewCVEs walks all CVE-tagged templates and bulk-inserts new entries
+// into knowledge_docs. Uses BulkIngestCVEDocs: one existence-check query +
+// batched INSERT ON CONFLICT DO NOTHING, replacing the previous N+1 approach.
 func (s *Syncer) IngestNewCVEs() {
 	if s.pg == nil {
 		return
 	}
 	entries := s.idx.AllEntries()
-	inserted, skipped := 0, 0
+	var rows []db.CVEDocRow
 	for _, e := range entries {
-		// Only ingest CVE-tagged templates.
 		if !hasCVETag(e.Tags) {
 			continue
 		}
@@ -93,7 +92,6 @@ func (s *Syncer) IngestNewCVEs() {
 		if title == "" {
 			title = e.ID
 		}
-		// Build content: description + tags + severity + template id.
 		var parts []string
 		if e.Description != "" {
 			parts = append(parts, e.Description)
@@ -101,21 +99,15 @@ func (s *Syncer) IngestNewCVEs() {
 		parts = append(parts, fmt.Sprintf("severity: %s", e.Severity))
 		parts = append(parts, fmt.Sprintf("tags: %s", strings.Join(e.Tags, ", ")))
 		parts = append(parts, fmt.Sprintf("template: %s", e.ID))
-		content := strings.Join(parts, "\n")
-		_, ok, err := s.pg.UpsertCVEDoc(title, content)
-		if err != nil {
-			log.Printf("[nuclei-sync] ingest CVE %s: %v", e.ID, err)
-			continue
-		}
-		if ok {
-			inserted++
-		} else {
-			skipped++
-		}
+		rows = append(rows, db.CVEDocRow{Title: title, Content: strings.Join(parts, "\n")})
+	}
+	inserted, skipped, err := s.pg.BulkIngestCVEDocs(rows)
+	if err != nil {
+		log.Printf("[nuclei-sync] CVE ingest error: %v", err)
+		return
 	}
 	log.Printf("[nuclei-sync] CVE ingest: %d inserted, %d already existed", inserted, skipped)
 }
-
 // hasCVETag reports whether the entry has a "cve" tag.
 func hasCVETag(tags []string) bool {
 	for _, t := range tags {

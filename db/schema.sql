@@ -1714,3 +1714,8 @@ ALTER TABLE knowledge_docs ADD COLUMN IF NOT EXISTS hit_count    INT     NOT NUL
 ALTER TABLE knowledge_docs ADD COLUMN IF NOT EXISTS source_task_id BIGINT REFERENCES tasks(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_knowledge_docs_status ON knowledge_docs(status);
 CREATE INDEX IF NOT EXISTS idx_knowledge_docs_hit    ON knowledge_docs(hit_count DESC);
+
+-- ── R3. CVE 去重约束（幂等）────────────────────────────────────────────────────
+-- Enables INSERT ... ON CONFLICT DO NOTHING for bulk CVE ingest.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_docs_cve_title
+    ON knowledge_docs(title) WHERE category = 'cve-nuclei';

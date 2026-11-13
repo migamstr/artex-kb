@@ -627,23 +627,83 @@ func vecLiteral(v []float32) string {
 
 // UpsertCVEDoc inserts a CVE knowledge entry if one with the same title does not
 // already exist (category=cve-nuclei). Returns (id, inserted, error).
-func (d *DB) UpsertCVEDoc(title, content string) (int64, bool, error) {
-	// Check for existing entry by title + category to avoid duplicates on re-pull.
-	var existing int64
-	err := d.QueryRow(`SELECT id FROM knowledge_docs WHERE category='cve-nuclei' AND title=$1 LIMIT 1`, title).Scan(&existing)
-	if err == nil {
-		return existing, false, nil // already exists
+// CVEDocRow is one entry for bulk CVE ingestion.
+type CVEDocRow struct {
+	Title   string
+	Content string
+}
+
+// BulkIngestCVEDocs inserts new CVE entries in one pass:
+// 1. Fetch all existing cve-nuclei titles (single query).
+// 2. Filter to genuinely new rows.
+// 3. Batch-INSERT in chunks of 100 via ON CONFLICT DO NOTHING.
+// Returns (inserted, skipped, error).
+func (d *DB) BulkIngestCVEDocs(rows []CVEDocRow) (int, int, error) {
+	if len(rows) == 0 {
+		return 0, 0, nil
 	}
-	id, err := d.AddKnowledgeDoc(&KnowledgeDoc{
-		Scope:    "global",
-		Category: "cve-nuclei",
-		Title:    title,
-		Content:  content,
-		Source:   "nuclei-sync",
-		Status:   KBStatusUnverified,
-	})
+	// step 1: existing titles
+	existRows, err := d.Query(`SELECT title FROM knowledge_docs WHERE category='cve-nuclei'`)
 	if err != nil {
-		return 0, false, err
+		return 0, 0, fmt.Errorf("BulkIngestCVEDocs fetch: %w", err)
+	}
+	existing := make(map[string]struct{}, len(rows))
+	for existRows.Next() {
+		var t string
+		if existRows.Scan(&t) == nil {
+			existing[t] = struct{}{}
+		}
+	}
+	existRows.Close()
+	// step 2: filter new
+	var newRows []CVEDocRow
+	for _, r := range rows {
+		if _, ok := existing[r.Title]; !ok {
+			newRows = append(newRows, r)
+		}
+	}
+	skipped := len(rows) - len(newRows)
+	if len(newRows) == 0 {
+		return 0, skipped, nil
+	}
+	// step 3: batch insert chunks of 100
+	const chunkSize = 100
+	inserted := 0
+	for i := 0; i < len(newRows); i += chunkSize {
+		chunk := newRows[i:]
+		if len(chunk) > chunkSize {
+			chunk = chunk[:chunkSize]
+		}
+		ph := make([]string, 0, len(chunk))
+		args := make([]any, 0, len(chunk)*2)
+		for j, row := range chunk {
+			ph = append(ph, fmt.Sprintf("('global','cve-nuclei',$%d,$%d,'nuclei-sync','unverified')", j*2+1, j*2+2))
+			args = append(args, row.Title, row.Content)
+		}
+		q := "INSERT INTO knowledge_docs(scope,category,title,content,source,status) VALUES " +
+			strings.Join(ph, ",") + " ON CONFLICT DO NOTHING"
+		res, err := d.Exec(q, args...)
+		if err != nil {
+			return inserted, skipped, fmt.Errorf("BulkIngestCVEDocs insert: %w", err)
+		}
+		n, _ := res.RowsAffected()
+		inserted += int(n)
+	}
+	return inserted, skipped, nil
+}
+
+// UpsertCVEDoc inserts a single CVE entry via ON CONFLICT DO NOTHING.
+// Kept for compatibility; prefer BulkIngestCVEDocs for batch work.
+func (d *DB) UpsertCVEDoc(title, content string) (int64, bool, error) {
+	var id int64
+	err := d.QueryRow(
+		`INSERT INTO knowledge_docs(scope,category,title,content,source,status)`+
+			` VALUES('global','cve-nuclei',$1,$2,'nuclei-sync','unverified')`+
+			` ON CONFLICT DO NOTHING RETURNING id`,
+		title, content,
+	).Scan(&id)
+	if err != nil {
+		return 0, false, nil // conflict or scan miss = already existed
 	}
 	return id, true, nil
 }
