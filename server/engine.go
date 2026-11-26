@@ -941,7 +941,7 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 					e.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
 						Summary: "目标已全部达成，直投意图已执行完毕，任务结束"})
 					if e.onTaskDone != nil {
-						e.onTaskDone(loopCtx, t)
+						e.onTaskDone(ctx, t)
 					}
 				}
 			}
