@@ -90,7 +90,7 @@ func (s *Server) handleCreateKnowledgeDoc(w http.ResponseWriter, r *http.Request
 
 	// Defaults
 	if doc.Scope == "" { doc.Scope = "global" }
-	if doc.Status == "" { doc.Status = db.KBStatusUnverified }
+	if doc.Status == "" { doc.Status = dbpkg.KBStatusUnverified }
 	if doc.Title == "" || doc.Content == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "title and content required"})
 		return
@@ -193,7 +193,7 @@ func (s *Server) handleKnowledgeStats(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	semanticOK := s.m.pg.KnowledgeVectorAvailable()
+	semanticOK := knowledge.NewService(s.m.pg).SemanticReady()
 	statusMap, err := s.m.pg.KnowledgeStatusCounts()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})

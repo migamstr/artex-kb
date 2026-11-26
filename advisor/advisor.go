@@ -272,12 +272,12 @@ func buildOptimizeInput(in OptimizeInput) string {
 
 func parseResult(text string) *Result {
 	text = strings.TrimSpace(text)
-	if i := strings.Index(text, ````json`); i >= 0 {
+	if i := strings.Index(text, "```json"); i >= 0 {
 		text = text[i+7:]
-		if j := strings.Index(text, `````); j >= 0 { text = text[:j] }
-	} else if i := strings.Index(text, `````); i >= 0 {
+		if j := strings.Index(text, "```"); j >= 0 { text = text[:j] }
+	} else if i := strings.Index(text, "```"); i >= 0 {
 		text = text[i+3:]
-		if j := strings.Index(text, `````); j >= 0 { text = text[:j] }
+		if j := strings.Index(text, "```"); j >= 0 { text = text[:j] }
 	}
 	text = strings.TrimSpace(text)
 	var r Result
